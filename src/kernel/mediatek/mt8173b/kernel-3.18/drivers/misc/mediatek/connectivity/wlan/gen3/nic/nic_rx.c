@@ -3219,7 +3219,7 @@ VOID nicRxProcessEventPacket(IN P_ADAPTER_T prAdapter, IN OUT P_SW_RFB_T prSwRfb
 			if (prEventBssBeaconTimeout->ucBssIndex >= BSS_INFO_NUM)
 				break;
 
-			DBGLOG(RX, INFO, "Beacon Timeout Reason: %d\n", prEventBssBeaconTimeout->ucReasonCode);
+			DBGLOG(RX, WARN, "Beacon Timeout Reason: %d\n", prEventBssBeaconTimeout->ucReasonCode);
 
 			prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter, prEventBssBeaconTimeout->ucBssIndex);
 

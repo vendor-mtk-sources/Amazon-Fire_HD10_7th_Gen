@@ -10086,7 +10086,8 @@ wlanoidSetCountryCode(IN P_ADAPTER_T prAdapter,
 			(u2Country != COUNTRY_CODE_FR) &&
 			(u2Country != COUNTRY_CODE_IT) &&
 			(u2Country != COUNTRY_CODE_GB) &&
-			(u2Country != COUNTRY_CODE_ES))
+			(u2Country != COUNTRY_CODE_ES) &&
+			(u2Country != COUNTRY_CODE_CA))
 		u2Country = COUNTRY_CODE_WW;
 
 	if (!rlmIsValidCountryCode(u2Country))

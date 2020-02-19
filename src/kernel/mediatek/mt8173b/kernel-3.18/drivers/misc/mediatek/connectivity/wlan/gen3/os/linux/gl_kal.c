@@ -2388,7 +2388,7 @@ kalIPv4FrameClassifier(IN P_GLUE_INFO_T prGlueInfo,
 
 				WLAN_GET_FIELD_BE32(&prBootp->u4TransId, &u4Xid);
 
-				DBGLOG(TX, INFO, "DHCP PKT[0x%p] XID[0x%08x] OPT[%u] TYPE[%u]\n",
+				DBGLOG(TX, STATE, "DHCP PKT[0x%p] XID[0x%08x] OPT[%u] TYPE[%u]\n",
 						   prPacket, u4Xid, prBootp->aucOptions[4], prBootp->aucOptions[6]);
 
 				prTxPktInfo->u2Flag |= BIT(ENUM_PKT_DHCP);

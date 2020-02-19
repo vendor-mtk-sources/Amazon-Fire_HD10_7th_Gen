@@ -879,7 +879,7 @@ static int __init macfb_init(void)
 			break;
 
 		/*
-		 * Internal is CSC, External is Keystone+abc123.
+		 * Internal is CSC, External is Keystone+Ariel.
 		 */
 		case MAC_MODEL_PB190:	/* external video is optional */
 		case MAC_MODEL_PB520:
