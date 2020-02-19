@@ -228,7 +228,7 @@ static bool fg_battery_shutdown;
 struct mt_battery_charging_custom_data *p_bat_charging_data;
 
 struct timespec chr_plug_in_time;
-#define PLUGIN_THRESHOLD (14*86400)
+#define PLUGIN_THRESHOLD (7*86400)
 
 static struct mt_battery_charging_custom_data default_charging_data = {
 
@@ -2144,6 +2144,21 @@ static ssize_t store_Custom_PlugIn_Time(struct device *dev,
 static DEVICE_ATTR(Custom_PlugIn_Time, 0664, show_Custom_PlugIn_Time,
 		   store_Custom_PlugIn_Time);
 
+static ssize_t show_recharge_counter(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", BMT_status.recharge_cnt);
+}
+
+static DEVICE_ATTR(recharge_counter, 0444, show_recharge_counter, NULL);
+
+static ssize_t show_charger_plugin_counter(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", BMT_status.charger_plugin_cnt);
+}
+
+static DEVICE_ATTR(charger_plugin_counter, 0444, show_charger_plugin_counter, NULL);
+
+
 static ssize_t show_Custom_Charging_Mode(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
@@ -2449,6 +2464,7 @@ static void battery_update(struct battery_data *bat_data)
 	struct power_supply *bat_psy = &bat_data->psy;
 	bool resetBatteryMeter = false;
 	char buf[256] = {0};
+	static int bat_status_old = POWER_SUPPLY_STATUS_UNKNOWN;
 
 	bat_data->BAT_TECHNOLOGY = POWER_SUPPLY_TECHNOLOGY_LION;
 	bat_data->BAT_HEALTH = POWER_SUPPLY_HEALTH_GOOD;
@@ -2562,6 +2578,22 @@ static void battery_update(struct battery_data *bat_data)
 	metrics_handle();
 
 #endif
+
+	/* Check recharge */
+	if (bat_status_old == POWER_SUPPLY_STATUS_FULL
+		&& bat_data->BAT_STATUS == POWER_SUPPLY_STATUS_CHARGING) {
+		BMT_status.recharge_cnt += 1;
+		pr_info("%s: start recharge: counter=%d, Vbat=%d\n", __func__,
+				BMT_status.recharge_cnt, BMT_status.bat_vol);
+#if defined(CONFIG_AMAZON_METRICS_LOG)
+		memset(buf, 0, sizeof(buf));
+		snprintf(buf, sizeof(buf),
+			"%s:recharge:detected=1;CT;1,vbat=%d;CT;1:NR",
+			__func__, BMT_status.bat_vol);
+		log_to_metrics(ANDROID_LOG_INFO, "battery", buf);
+#endif
+	}
+	bat_status_old = bat_data->BAT_STATUS;
 
 	power_supply_changed(bat_psy);
 }
@@ -3322,6 +3354,7 @@ static void mt_battery_charger_detect_check(void)
 			g_custom_charging_cv = -1;
 
 			bat_charger_type_detection();
+			BMT_status.charger_plugin_cnt++;
 			if ((BMT_status.charger_type == STANDARD_HOST)
 			    || (BMT_status.charger_type == CHARGING_HOST)) {
 				mt_usb_connect();
@@ -3660,6 +3693,14 @@ void BAT_thread(void)
 	if (battery_meter_initilized == false) {
 		battery_meter_initial();	/* move from battery_probe() to decrease booting time */
 		BMT_status.nPercent_ZCV = battery_meter_get_battery_nPercent_zcv();
+#ifdef CONFIG_MTK_BATTERY_CVR_SUPPORT
+#if defined(CONFIG_MTK_JEITA_STANDARD_SUPPORT)
+		gFG_CV_Battery_Voltage = p_bat_charging_data->jeita_temp_pos_10_to_pos_45_cv_voltage;
+#else
+		gFG_CV_Battery_Voltage = 4200000;
+#endif
+		gFG_CV_Voltage_Reduction_Supported = 1;
+#endif
 		battery_meter_initilized = true;
 
 	}
@@ -4183,6 +4224,16 @@ static void init_charging_data_from_dt(struct device_node *np)
 
 }
 
+
+#ifdef CONFIG_MTK_BATTERY_CVR_SUPPORT
+void init_jeita_cv_voltage_from_sysfs(void)
+{
+#if defined(CONFIG_MTK_JEITA_STANDARD_SUPPORT)
+	p_bat_charging_data->jeita_temp_pos_10_to_pos_45_cv_voltage = gFG_CV_Battery_Voltage;
+#endif
+}
+#endif
+
 static ssize_t levels_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	struct battery_data *data = &battery_main;
@@ -4354,6 +4405,8 @@ static int battery_probe(struct platform_device *pdev)
 		ret_device_file = device_create_file(dev, &dev_attr_Custom_Charging_Current);
 		ret_device_file = device_create_file(dev, &dev_attr_Custom_PlugIn_Time);
 		ret_device_file = device_create_file(dev, &dev_attr_Custom_Charging_Mode);
+		ret_device_file = device_create_file(dev, &dev_attr_recharge_counter);
+		ret_device_file = device_create_file(dev, &dev_attr_charger_plugin_counter);
 #if defined(CONFIG_MTK_PUMP_EXPRESS_PLUS_SUPPORT)
 		ret_device_file = device_create_file(dev, &dev_attr_Pump_Express);
 #endif
@@ -4381,6 +4434,9 @@ static int battery_probe(struct platform_device *pdev)
 	BMT_status.bat_full = false;
 	BMT_status.nPercent_ZCV = 0;
 	BMT_status.nPrecent_UI_SOC_check_point = battery_meter_get_battery_nPercent_UI_SOC();
+#ifdef CONFIG_MTK_BATTERY_CVR_SUPPORT
+	BMT_status.cv_voltage_changed = false;
+#endif
 
 	kthread_run(bat_thread_kthread, NULL, "bat_thread_kthread");
 	battery_log(BAT_LOG_CRTI, "[battery_probe] bat_thread_kthread Done\n");

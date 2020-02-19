@@ -24,7 +24,9 @@
 #include <linux/vmalloc.h>
 #include <linux/slab.h>
 #include <linux/clk.h>
+#include <linux/clk-provider.h>
 #include <linux/io.h>
+#include <linux/atomic.h>
 
 #include <linux/ioctl.h>
 #include <linux/fs.h>
@@ -134,6 +136,7 @@ SF_HWC_PIXEL_MAX_NORMAL
 
 struct mtk_smi_common {
 	void __iomem		*base;
+	void __iomem		*clk_reg;
 	struct clk		*clk_apb;
 	struct clk		*clk_smi;
 };
@@ -154,6 +157,9 @@ static long MTK_SMI_COMPAT_ioctl(struct file *filp, unsigned int cmd, unsigned l
 #else
 #define MTK_SMI_COMPAT_ioctl  NULL
 #endif
+
+typedef void (power_state_fn)(struct device *dev, int state);
+int set_power_state_cb(struct device *dev, power_state_fn *cb);
 
 /* Use this function to get base address of Larb resgister
 * to support error checking
@@ -182,12 +188,54 @@ static unsigned int smi_get_larb_index(struct device *dev)
 	return idx;
 }
 
+static int mtk_smi_larb_get_ref_cnt(int larbid)
+{
+	return (int)atomic_read(&(smi_data->larbref[larbid]));
+}
+
+extern unsigned int gu4VdecPWRCounter;
+static int smi_check_larb_ref(void)
+{
+	int idx, cnt;
+
+	for (idx = 0; idx < smi_data->larb_nr; idx++) {
+		cnt = mtk_smi_larb_get_ref_cnt(idx);
+		if (cnt)
+			pr_err("error:smi larb%d was still open when suspend, cnt:%d. vdec_cnt=%d\n", idx, cnt, gu4VdecPWRCounter);
+	}
+
+	return 0;
+}
+
+void mm_power_state_cb(struct device *dev, int state)
+{
+	struct mtk_smi_common *smi = dev_get_drvdata(dev);
+
+	if (state == 1) { /* power on */
+		if ((__clk_get_enable_count(smi->clk_smi) > 0) &&
+			!(__clk_is_enabled(smi->clk_smi))) {
+			pr_err("error:%s smi_common clk mismatched! reg=0x%08x cnt=%d.\n",
+				__func__, smi->clk_reg ? readl(smi->clk_reg):0xdeaddead, __clk_get_enable_count(smi->clk_smi));
+		}
+	} else if (state == 0) { /* power off */
+		smi_check_larb_ref();
+	}
+}
+
 int mtk_smi_larb_clock_on(int larbid, bool pm)
 {
+	int ret;
+
 	if (!smi_data || larbid < 0 || larbid >= smi_data->larb_nr)
 		return -EINVAL;
 
-	return _mtk_smi_larb_get(smi_data->larb[larbid], pm);
+	ret = _mtk_smi_larb_get(smi_data->larb[larbid], pm);
+	if (ret)
+		return ret;
+
+	atomic_inc(&(smi_data->larbref[larbid]));
+
+	return ret;
 }
 
 void mtk_smi_larb_clock_off(int larbid, bool pm)
@@ -195,8 +243,62 @@ void mtk_smi_larb_clock_off(int larbid, bool pm)
 	if (!smi_data || larbid < 0 || larbid >= smi_data->larb_nr)
 		return;
 
+	if (mtk_smi_larb_get_ref_cnt(larbid) <= 0)
+		pr_err("error:larb ref <=0, larb %d ref %d\n", larbid,
+			mtk_smi_larb_get_ref_cnt(larbid));
+
+
+	atomic_dec(&(smi_data->larbref[larbid]));
 	_mtk_smi_larb_put(smi_data->larb[larbid], pm);
 }
+
+void mtk_smi_larb_dump(void)
+{
+	int larb_id, larb_ref;
+	unsigned long clk_reg;
+
+	pr_err("----********mtk_smi_larb_dump********----\n");
+	for (larb_id=0; larb_id<SMI_LARB_NR; larb_id++) {
+		larb_ref = mtk_smi_larb_get_ref_cnt(larb_id);
+
+		switch (larb_id) {
+		case 0:
+			clk_reg = (unsigned long)ioremap(0x14000100,16);
+			pr_err("[smi] larb%d ref: %d, clk: 0x%x\n", larb_id, larb_ref,
+				M4U_ReadReg32(clk_reg, 0));
+			break;
+		case 1:
+			clk_reg = (unsigned long)ioremap(0x16000000,16);
+			pr_err("[smi] larb%d ref: %d, clk: 0x%x, 0x%x\n", larb_id, larb_ref,
+				M4U_ReadReg32(clk_reg, 0), M4U_ReadReg32(clk_reg, 8));
+			break;
+		case 2:
+			clk_reg = (unsigned long)ioremap(0x15000000,16);
+			pr_err("[smi] larb%d ref: %d, clk: 0x%x\n", larb_id, larb_ref,
+				M4U_ReadReg32(clk_reg, 0));
+			break;
+		case 3:
+			clk_reg = (unsigned long)ioremap(0x18000000,16);
+			pr_err("[smi] larb%d ref: %d, clk: 0x%x\n", larb_id, larb_ref,
+				M4U_ReadReg32(clk_reg, 0));
+			break;
+		case 4:
+			clk_reg = (unsigned long)ioremap(0x14000110,16);
+			pr_err("[smi] larb%d ref: %d, clk: 0x%x\n", larb_id, larb_ref,
+				M4U_ReadReg32(clk_reg, 0));
+			break;
+		case 5:
+			clk_reg = (unsigned long)ioremap(0x19000000,16);
+			pr_err("[smi] larb%d ref: %d, clk: 0x%x\n", larb_id, larb_ref,
+				M4U_ReadReg32(clk_reg, 0));
+			break;
+		default:
+			return;
+		}
+		iounmap((void *)clk_reg);
+	}
+}
+
 
 static void backup_smi_common(void)
 {
@@ -1114,6 +1216,7 @@ static int mtk_smi_larb_probe(struct platform_device *pdev)
 	smi_data->larb[larbid] = dev;
 	smi_data->larb_nr++;
 
+	atomic_set(&(smi_data->larbref[larbid]), 0);
 	SMIMSG("larb %d-cnt %d probe done\n", larbid, smi_data->larb_nr);
 
 	pm_runtime_enable(dev);
@@ -1163,6 +1266,15 @@ static int mtk_smi_probe(struct platform_device *pdev)
 	if (IS_ERR(smipriv->base))
 		return PTR_ERR(smipriv->base);
 
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "mmsys_cg_con0_base");
+	if (res) {
+		smipriv->clk_reg = devm_ioremap_resource(dev, res);
+		if (IS_ERR(smipriv->clk_reg)) {
+			pr_err("fail to get mmsys_cg_con0 resource!\n");
+			smipriv->clk_reg = NULL;
+		}
+	}
+
 	smipriv->clk_apb = devm_clk_get(dev, "apb");
 	if (IS_ERR(smipriv->clk_apb))
 		return PTR_ERR(smipriv->clk_apb);
@@ -1175,6 +1287,7 @@ static int mtk_smi_probe(struct platform_device *pdev)
 	smi_data->smi_common_base = (unsigned long)smipriv->base;
 
 	pm_runtime_enable(dev);
+	set_power_state_cb(&pdev->dev, mm_power_state_cb);
 	dev_set_drvdata(dev, smipriv);
 	return 0;
 }

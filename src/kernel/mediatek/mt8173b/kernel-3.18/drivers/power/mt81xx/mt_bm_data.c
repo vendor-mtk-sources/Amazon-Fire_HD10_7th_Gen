@@ -22,8 +22,6 @@
 
 #ifdef CONFIG_IDME
 #include <misc/idme.h>
-#define BATTERY_ID_ATL 0x841
-#define BATTERY_ID_DSY 0x831
 #endif
 #ifdef CONFIG_BATTERY_DTS_SUPPORT
 #include "battery_dts_support.h"
@@ -2552,7 +2550,7 @@ static struct BATT_TEMPERATURE p1v1_bat_temperature_table[] = {
 	{70, 7897}
 };
 
-static struct BATT_TEMPERATURE ariel8_bat_temperature_table[] = {
+static struct BATT_TEMPERATURE abc1238_bat_temperature_table[] = {
 	{-20, 68237},
 	{-15, 53650},
 	{-10, 42506},
@@ -2680,9 +2678,9 @@ void suez_1v0_custom_battery_init(struct mt_battery_meter_custom_data *p_meter_d
 	#endif
 }
 
-void ariel8_custom_battery_init(struct mt_battery_meter_custom_data *p_meter_data)
+void abc1238_custom_battery_init(struct mt_battery_meter_custom_data *p_meter_data)
 {
-	/* todo: should update ariel8 board value here */
+	/* todo: should update abc1238 board value here */
 	p_meter_data->car_tune_value = 102;
 
 	/* NTC 10K */
@@ -2698,11 +2696,11 @@ void ariel8_custom_battery_init(struct mt_battery_meter_custom_data *p_meter_dat
 	/* set low capacity tolerance to 2% due to flat curve of low battery area */
 	p_meter_data->poweron_low_capacity_tolerance = 2;
 
-	p_meter_data->p_batt_temperature_table = ariel8_bat_temperature_table;
+	p_meter_data->p_batt_temperature_table = abc1238_bat_temperature_table;
 	p_meter_data->battery_ntc_table_saddles =
-	    sizeof(ariel8_bat_temperature_table) / sizeof(struct BATT_TEMPERATURE);
+	    sizeof(abc1238_bat_temperature_table) / sizeof(struct BATT_TEMPERATURE);
 
-	/* todo: should update ariel8 battery capacity here */
+	/* todo: should update abc1238 battery capacity here */
 	p_meter_data->q_max_pos_50 = 4000;
 	p_meter_data->q_max_pos_50_h_current = 3950;
 	p_meter_data->q_max_pos_25 = 4000;
@@ -2765,7 +2763,7 @@ struct mt_bm_item {
 
 static struct mt_bm_item mt_battery_profiles[] = {
 	{"p1v1_battery", p1v1_custom_battery_init},
-	{"ariel_battery", ariel8_custom_battery_init},
+	{"abc123_battery", abc1238_custom_battery_init},
 	{"suez_battery", suez_custom_battery_init},
 };
 

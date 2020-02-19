@@ -109,7 +109,8 @@ static void hall_work_func(struct work_struct *work)
 	msleep(DELAY_VALUE);
 	priv->sensor_data[0].gpio_state = gpio_get_value(gpio_pin);
 	priv->cover = priv->sensor_data[0].gpio_state ? COVER_OPENED : COVER_CLOSED;
-
+	pr_info("%s: cover state: %s\n", __func__,
+			priv->cover == COVER_OPENED ? "OPENED" : "CLOSED");
 #ifdef CONFIG_AMAZON_METRICS_LOG
 	/* Log in metrics */
 	//TODO DISPLAY is useless for hall sensor under current implementation

@@ -400,6 +400,8 @@ const char *cmdq_core_parse_error_module_by_hwflag_impl(struct TaskStruct *pTask
 	return module;
 }
 
+extern void mtk_smi_larb_dump(void);
+
 void cmdq_core_dump_clock_gating(void)
 {
 	uint32_t value[3] = { 0 };
@@ -409,6 +411,7 @@ void cmdq_core_dump_clock_gating(void)
 	value[2] = CMDQ_REG_GET32(MMSYS_CONFIG_BASE_VA + 0x890);
 	CMDQ_ERR("MMSYS_CG_CON0(deprecated): 0x%08x, MMSYS_CG_CON1: 0x%08x\n", value[0], value[1]);
 	CMDQ_ERR("MMSYS_DUMMY_REG: 0x%08x\n", value[2]);
+	mtk_smi_larb_dump();
 #ifndef CONFIG_MTK_FPGA
 /* CMDQ_ERR("ISPSys clock state %d\n", subsys_is_on(SYS_ISP)); */
 /* CMDQ_ERR("DisSys clock state %d\n", subsys_is_on(SYS_DIS)); */

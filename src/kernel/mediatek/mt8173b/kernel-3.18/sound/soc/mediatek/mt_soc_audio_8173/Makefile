@@ -15,13 +15,13 @@ snd-soc-mt8173-pcm-objs := \
 snd-soc-mt8173-mt6391-mach-objs := \
     mt8173_evb.o
 
-snd-soc-mt8173-mt6391-ariel-mach-objs := \
-    ariel.o
+snd-soc-mt8173-mt6391-abc123-mach-objs := \
+    abc123.o
 
 snd-soc-mt8173-mt6391-suez-mach-objs := \
     mt_soc_machine.o
 
 obj-$(CONFIG_SND_SOC_MT8173) += snd-soc-mt8173-pcm.o
 obj-$(CONFIG_SND_SOC_MT8173_MT6391_MACH) += snd-soc-mt8173-mt6391-mach.o
-obj-$(CONFIG_SND_SOC_MT8173_MT6391_ARIEL_MACH) += snd-soc-mt8173-mt6391-ariel-mach.o
+obj-$(CONFIG_SND_SOC_MT8173_MT6391_abc123_MACH) += snd-soc-mt8173-mt6391-abc123-mach.o
 obj-$(CONFIG_SND_SOC_MT8173_MT6391_SUEZ_MACH) += snd-soc-mt8173-mt6391-suez-mach.o

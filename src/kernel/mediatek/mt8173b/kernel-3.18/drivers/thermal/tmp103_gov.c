@@ -112,18 +112,20 @@ static int tmp103_throttle(struct thermal_zone_device *tz, int trip)
 			if (target) {
 				pr_warning("VS cooler %s throttling, cur_temp=%d, trip_temp=%ld, target=%lu\n",
 							cdev->type, tz->temperature, temp, target);
-#ifdef config_amazon_metrics_log
+#ifdef CONFIG_AMAZON_METRICS_LOG
 				snprintf(buf, TMP103_GOV_METRICS_STR_LEN,
-				":%s:vs_cooler_%s_throttling,cur_temp=%d;trip_temp=%ld;target=%lu;CT;1:NR",
+					"%s:vs_cooler_%s_throttling=1;CT;1,cur_temp=%d;CT;1,"
+					"trip_temp=%d;CT;1,target=%lu;CT;1:NR",
 					PREFIX, cdev->type, tz->temperature, temp, target);
 				log_to_metrics(ANDROID_LOG_INFO, "ThermalEvent", buf);
 #endif
 			} else {
 				pr_warning("VS cooler %s unthrottling, cur_temp=%d, trip_temp=%ld, target=%lu\n",
 							cdev->type, tz->temperature, temp, target);
-#ifdef config_amazon_metrics_log
+#ifdef CONFIG_AMAZON_METRICS_LOG
 				snprintf(buf, TMP103_GOV_METRICS_STR_LEN,
-				":%s:vs_cooler_%s_unthrottling,cur_temp=%d;trip_temp=%ld;target=%lu;CT;1:NR",
+					"%s:vs_cooler_%s_unthrottling=1;CT;1,cur_temp=%d;CT;1,"
+					"trip_temp=%d;CT;1,target=%lu;CT;1:NR",
 					PREFIX, cdev->type, tz->temperature, temp, target);
 				log_to_metrics(ANDROID_LOG_INFO, "ThermalEvent", buf);
 #endif

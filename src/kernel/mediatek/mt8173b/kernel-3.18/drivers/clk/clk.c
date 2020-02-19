@@ -21,6 +21,9 @@
 #include <linux/device.h>
 #include <linux/init.h>
 #include <linux/sched.h>
+#ifdef CONFIG_AMAZON_DEBUG_CLK
+#include <linux/suspend.h>
+#endif
 
 #include "clk.h"
 
@@ -36,6 +39,11 @@ static struct task_struct *enable_owner;
 
 static int prepare_refcnt;
 static int enable_refcnt;
+
+#ifdef CONFIG_AMAZON_DEBUG_CLK
+struct notifier_block clk_pm_notifier;
+#endif
+
 
 static HLIST_HEAD(clk_root_list);
 static HLIST_HEAD(clk_orphan_list);
@@ -526,6 +534,95 @@ out:
 	return ret;
 }
 
+#if defined(CONFIG_AMAZON_DEBUG_CLK)
+static int clk_dump_enabled_clk(void)
+{
+	struct clk *clk = NULL;
+	int cnt = 0, ign = 0, disb = 0;
+
+	printk("%s: ", __func__);
+	hlist_for_each_entry(clk, &clk_debug_list, debug_node) {
+		if (!clk)
+			continue;
+		if (__clk_get_enable_count(clk) <= 0) {
+			disb++;
+			continue;
+		}
+		if (clk->ignore_dbg) {
+			ign++;
+			continue;
+		}
+		cnt++;
+		printk("%s:%d|%d ",
+				__clk_get_name(clk),
+				__clk_get_enable_count(clk),
+				__clk_is_enabled(clk));
+	}
+	printk("[%d/%d/%d]\n", cnt, ign, disb);
+
+	return 0;
+}
+
+int clk_pm_notify(struct notifier_block *notify_block,
+					unsigned long mode, void *unused)
+{
+	switch (mode) {
+	case PM_POST_SUSPEND:
+		clk_dump_enabled_clk();
+		break;
+	}
+
+	return 0;
+}
+#endif /*CONFIG_AMAZON_DEBUG_CLK*/
+
+#if defined(CONFIG_AMAZON_DEBUG_CLK)
+static const char * const *get_ignored_clk_names(size_t *num)
+{
+	static const char * const clks[] = {
+		"mainpll",
+		"rtc_sel",
+		"pmicspi_sel",
+		"mpll_208m_ck",
+		"dmpll_ck",
+		"clkrtc_ext",
+		"main_h364m",
+		"main_h546m",
+		"clk_null",
+		"clkph_mck_o",
+		"msdc30_3_sel",
+		"msdc50_0_sel",
+		"msdc50_0_h_sel",
+		"msdc50_2_h_sel",
+		"msdcpll_d4",
+		"msdcpll_d2",
+		"univpll_d2",
+		"univpll3_d2",
+		"univpll2_d2",
+		"univ_416m",
+		"univ_624m",
+		"univ_249p6m",
+		"peri_msdc30_0",
+		"infra_pmicwrap",
+		"infra_pmicspi",
+		"infra_kp",
+		"infra_m4u",
+		"infra_dbgclk",
+		"armca15pll",
+		"armca7pll",
+		"syspll1_d2",
+		"cci400_sel"
+	};
+
+	*num = ARRAY_SIZE(clks);
+
+	return clks;
+}
+#endif
+
+
+
+
 /**
  * clk_debug_register - add a clk node to the debugfs clk tree
  * @clk: the clk being added to the debugfs clk tree
@@ -537,8 +634,25 @@ out:
 static int clk_debug_register(struct clk *clk)
 {
 	int ret = 0;
+#if defined(CONFIG_AMAZON_DEBUG_CLK)
+	int i;
+	size_t num;
+	const char * const *ignored_clks = get_ignored_clk_names(&num);
+#endif
 
 	mutex_lock(&clk_debug_lock);
+
+#if defined(CONFIG_AMAZON_DEBUG_CLK)
+	for (i = 0; i < num; i++) {
+		if (strcmp(clk->name, ignored_clks[i]) == 0) {
+			pr_debug("%s: ignore debug %s\n",
+					__func__, clk->name);
+			clk->ignore_dbg = true;
+			break;
+		}
+	}
+#endif
+
 	hlist_add_head(&clk->debug_node, &clk_debug_list);
 
 	if (!inited)
@@ -632,6 +746,12 @@ static int __init clk_debug_init(void)
 	mutex_lock(&clk_debug_lock);
 	hlist_for_each_entry(clk, &clk_debug_list, debug_node)
 		clk_debug_create_one(clk, rootdir);
+
+#if defined(CONFIG_AMAZON_DEBUG_CLK)
+	clk_pm_notifier.notifier_call = clk_pm_notify;
+	clk_pm_notifier.priority = INT_MAX;
+	register_pm_notifier(&clk_pm_notifier);
+#endif /*CONFIG_AMAZON_DEBUG_CLK*/
 
 	inited = 1;
 	mutex_unlock(&clk_debug_lock);

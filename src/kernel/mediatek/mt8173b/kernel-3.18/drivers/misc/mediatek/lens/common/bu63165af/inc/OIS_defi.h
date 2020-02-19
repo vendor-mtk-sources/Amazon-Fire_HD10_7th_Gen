@@ -11,14 +11,6 @@
  * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
-/* /////////////////////////////////////////////////////////////////////////// */
-/* File Name    : OIS_defi.h */
-/* Function             : Header file for OIS controller */
-/* Rule         : Use TAB 4 */
-/*  */
-/* Copyright(c) Rohm Co.,Ltd. All rights reserved */
-/*  */
-/***** ROHM Confidential ***************************************************/
 #ifndef OIS_DEFINITION_H
 #define OIS_DEFINITION_H
 

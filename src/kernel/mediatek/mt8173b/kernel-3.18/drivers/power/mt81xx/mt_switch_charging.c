@@ -413,9 +413,17 @@ int do_jeita_state_machine(void)
 	}
 
 	/* set CV after temperature changed */
+#ifdef CONFIG_MTK_BATTERY_CVR_SUPPORT
+	if ((g_temp_status != previous_g_temp_status)
+		|| (BMT_status.cv_voltage_changed == true)) {
+#else
 	if (g_temp_status != previous_g_temp_status) {
+#endif
 		cv_voltage = select_jeita_cv();
 		bat_charger_set_cv_voltage(cv_voltage);
+#ifdef CONFIG_MTK_BATTERY_CVR_SUPPORT
+		BMT_status.cv_voltage_changed = false;
+#endif
 	}
 
 	return PMU_STATUS_OK;

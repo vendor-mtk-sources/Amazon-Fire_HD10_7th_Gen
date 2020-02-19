@@ -169,6 +169,13 @@ config MTK_BATTERY_LIFETIME_DATA_SUPPORT
 	  temperature, etc.
 	default n
 
+config MTK_BATTERY_CVR_SUPPORT
+	bool "Battery CVR Support"
+	default n
+	help
+	   yes : Support Battery CVR feature
+	   no : Not Support Battery CVR feature
+
 config SOC_BY_HW_FG
 	bool "Use MediaTek H/W Fuel Gauge"
 	default n

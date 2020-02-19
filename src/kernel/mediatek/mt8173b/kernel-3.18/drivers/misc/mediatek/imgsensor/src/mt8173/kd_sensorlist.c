@@ -3418,11 +3418,11 @@ BOOL CAMERA_Regulator_poweron(int PinIdx, int PwrType, int Voltage)
 	/*BOOL ret; */
 	struct regulator *pwr;
 
-#if defined(CONFIG_ARCH_MTK_8173_SLOANE)
-	/* sloane platform uses vcamd as a 3.3V regulator for gpio and hdmi
+#if defined(CONFIG_ARCH_MTK_8173_abc123)
+	/* abc123 platform uses vcamd as a 3.3V regulator for gpio and hdmi
 	 * domain.  Hence this regulator shouldn't be turned off and on.
 	 * Since vcamd is used in tablets for camera, selectively returning
-	 * from poweron function if platform is sloane
+	 * from poweron function if platform is abc123
 	 */
 	return 1;
 #endif
@@ -3466,11 +3466,11 @@ BOOL CAMERA_Regulator_powerdown(int PinIdx, int PwrType)
 	/*BOOL ret;*/
 	struct regulator *pwr;
 
-#if defined(CONFIG_ARCH_MTK_8173_SLOANE)
-	/* sloane platform uses vcamd as a 3.3V regulator for gpio and hdmi
+#if defined(CONFIG_ARCH_MTK_8173_abc123)
+	/* abc123 platform uses vcamd as a 3.3V regulator for gpio and hdmi
 	 * domain.  Hence this regulator shouldn't be turned off and on.
 	 * Since vcamd is used in tablets for camera, selectively returning
-	 * from powerdown function if platform is sloane
+	 * from powerdown function if platform is abc123
 	 */
 	return 1;
 #endif

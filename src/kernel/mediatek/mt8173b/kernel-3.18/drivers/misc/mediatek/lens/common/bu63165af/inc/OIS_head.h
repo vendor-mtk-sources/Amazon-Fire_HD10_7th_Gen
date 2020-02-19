@@ -11,14 +11,6 @@
  * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
-/* /////////////////////////////////////////////////////////////////////////// */
-/* File Name    : OIS_head.h */
-/* Function             : Header file */
-/* Rule         : Use TAB 4 */
-/*  */
-/* Copyright(c) Rohm Co.,Ltd. All rights reserved */
-/*  */
-/***** ROHM Confidential ***************************************************/
 #ifndef OIS_MAIN_H
 #define OIS_MAIN_H
 

@@ -1109,6 +1109,12 @@ struct _BSS_INFO_T {
 	BOOLEAN fgIsNetRequestInActive;
 #endif
 
+#if CFG_SUPPORT_ROAMING_SKIP_ONE_AP
+	UINT_8	ucRoamSkipTimes;
+	BOOLEAN fgGoodRcpiArea;
+	BOOLEAN fgPoorRcpiArea;
+#endif
+
 	WIFI_WMM_AC_STAT_T arLinkStatistics[WMM_AC_INDEX_NUM];	/*link layer statistics */
 
 };

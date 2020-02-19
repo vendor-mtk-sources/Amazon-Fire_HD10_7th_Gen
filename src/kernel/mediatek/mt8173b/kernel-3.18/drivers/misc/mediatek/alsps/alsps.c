@@ -91,6 +91,8 @@ static void als_work_func(struct work_struct *work)
 als_loop:
 	if (true == cxt->is_als_polling_run)
 		mod_timer(&cxt->timer_als, jiffies + atomic_read(&cxt->delay_als)/(1000/HZ));
+	else
+		pr_err("%s: skip mod_timer: %d\n", __func__, cxt->is_als_polling_run);
 }
 
 static void ps_work_func(struct work_struct *work)
@@ -154,6 +156,9 @@ static void als_poll(unsigned long data)
 
 	if ((obj != NULL) && (obj->is_als_polling_run))
 		schedule_work(&obj->report_als);
+	else
+		pr_err("%s: skip schedule work: %d\n",
+				__func__, obj->is_als_polling_run);
 }
 
 static void ps_poll(unsigned long data)
@@ -209,7 +214,7 @@ static int als_real_enable(int enable)
 	if (1 == enable) {
 		if (true == cxt->is_als_active_data || true == cxt->is_als_active_nodata) {
 			err = cxt->als_ctl.enable_nodata(1);
-			if (err)
+			if (err) {
 				err = cxt->als_ctl.enable_nodata(1);
 				if (err) {
 					err = cxt->als_ctl.enable_nodata(1);
@@ -217,7 +222,8 @@ static int als_real_enable(int enable)
 						ALSPS_ERR("alsps enable(%d) err 3 timers = %d\n", enable, err);
 				}
 			}
-			ALSPS_LOG("alsps real enable\n");
+		}
+		ALSPS_LOG("alsps real enable\n");
 	}
 
 	if (0 == enable) {
@@ -246,6 +252,14 @@ static int als_enable_data(int enable)
 		return -1;
 	}
 
+	if (atomic_read(&cxt->alsps_suspend)) {
+		cxt->is_als_active_data = !!enable;
+		cxt->is_als_need_restore_polling = !!enable;
+		ALSPS_ERR("%s: already in suspend, just save enable state: %d\n",
+			__func__, cxt->is_als_active_data);
+		return -1;
+	}
+
 	if (1 == enable) {
 		ALSPS_LOG("ALSPS enable data\n");
 		cxt->is_als_active_data = true;
@@ -255,8 +269,8 @@ static int als_enable_data(int enable)
 		if (false == cxt->is_als_polling_run && cxt->is_als_batch_enable == false) {
 			if (false == cxt->als_ctl.is_report_input_direct) {
 				cxt->is_get_valid_als_data_after_enable = false;
-				mod_timer(&cxt->timer_als, jiffies + atomic_read(&cxt->delay_als)/(1000/HZ));
 				cxt->is_als_polling_run = true;
+				mod_timer(&cxt->timer_als, jiffies + atomic_read(&cxt->delay_als)/(1000/HZ));
 			}
 		}
 	}
@@ -320,6 +334,14 @@ static int ps_enable_data(int enable)
 	cxt = alsps_context_obj;
 	if (NULL == cxt->ps_ctl.open_report_data) {
 		ALSPS_ERR("no ps control path\n");
+		return -1;
+	}
+
+	if (atomic_read(&cxt->alsps_suspend)) {
+		cxt->is_ps_active_data = !!enable;
+		cxt->is_ps_need_restore_polling = !!enable;
+		ALSPS_ERR("%s: already in suspend, just save enable state: %d\n",
+			__func__, cxt->is_ps_active_data);
 		return -1;
 	}
 
@@ -390,6 +412,7 @@ static ssize_t als_show_active(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%d\n", div);
 }
 
+#define ALS_DELAY_MIN_MS 10
 static ssize_t als_store_delay(struct device *dev, struct device_attribute *attr,
 				  const char *buf, size_t count)
 {
@@ -415,6 +438,7 @@ static ssize_t als_store_delay(struct device *dev, struct device_attribute *attr
 
 	if (false == cxt->als_ctl.is_report_input_direct) {
 		mdelay = (int)delay/1000/1000;
+		mdelay = (mdelay < ALS_DELAY_MIN_MS) ? ALS_DELAY_MIN_MS : mdelay;
 		atomic_set(&alsps_context_obj->delay_als, mdelay);
 	}
 	cxt->als_ctl.set_delay(delay);
@@ -426,10 +450,8 @@ static ssize_t als_store_delay(struct device *dev, struct device_attribute *attr
 static ssize_t als_show_delay(struct device *dev,
 				 struct device_attribute *attr, char *buf)
 {
-	int len = 0;
-
-	ALSPS_LOG(" not support now\n");
-	return len;
+	struct alsps_context *cxt = alsps_context_obj;
+	return snprintf(buf, PAGE_SIZE, "%d\n", atomic_read(&cxt->delay_als));
 }
 
 
@@ -1010,6 +1032,75 @@ int alsps_aal_get_data(void)
 }
 /* *************************************************** */
 
+static int alsps_suspend(struct device *dev)
+{
+	struct alsps_context *cxt = alsps_context_obj;
+
+	pr_info("%s\n", __func__);
+
+	atomic_set(&cxt->alsps_suspend, 1);
+	if ( cxt->is_als_active_data && cxt->is_als_polling_run) {
+		pr_info("%s: freeze als polling thread\n", __func__);
+		cxt->is_als_polling_run = false;
+		cxt->is_als_need_restore_polling = true;
+		smp_mb();/* for memory barrier */
+		del_timer_sync(&cxt->timer_als);
+		smp_mb();/* for memory barrier */
+		cancel_work_sync(&cxt->report_als);
+		cxt->drv_data.als_data.values[0] = ALSPS_INVALID_VALUE;
+	}
+
+	if (cxt->is_ps_active_data && cxt->is_ps_polling_run) {
+		pr_info("%s: freeze ps polling thread\n", __func__);
+		cxt->is_ps_polling_run = false;
+		cxt->is_ps_need_restore_polling = true;
+		smp_mb();/* for memory barrier*/
+		del_timer_sync(&cxt->timer_ps);
+		smp_mb();/* for memory barrier*/
+		cancel_work_sync(&cxt->report_ps);
+		cxt->drv_data.ps_data.values[0] = ALSPS_INVALID_VALUE;
+	}
+	return 0;
+}
+
+static int alsps_resume(struct device *dev)
+{
+	struct alsps_context *cxt = alsps_context_obj;
+
+	pr_info("%s\n", __func__);
+
+	atomic_set(&cxt->alsps_suspend, 0);
+	if (cxt->is_als_active_data && cxt->is_als_need_restore_polling) {
+		pr_info("%s: restore als polling thread\n", __func__);
+		cxt->is_als_polling_run = true;
+		cxt->is_als_need_restore_polling = false;
+		mod_timer(&cxt->timer_als, jiffies + atomic_read(&cxt->delay_als)/(1000/HZ));
+	}
+
+	if (cxt->is_ps_active_data && cxt->is_ps_need_restore_polling) {
+		pr_info("%s: restore ps polling thread\n", __func__);
+		cxt->is_ps_polling_run = true;
+		cxt->is_get_valid_ps_data_after_enable = false;
+		cxt->is_ps_need_restore_polling = false;
+		mod_timer(&cxt->timer_ps, jiffies + atomic_read(&cxt->delay_ps)/(1000/HZ));
+	}
+
+	return 0;
+}
+
+
+static const struct dev_pm_ops alsps_pm_ops = {
+	.suspend = alsps_suspend,
+	.resume = alsps_resume,
+};
+
+static struct platform_driver alsps_driver = {
+	.driver = {
+		.name = "alsps",
+		.pm = &alsps_pm_ops,
+	}
+};
+
 static int alsps_probe(void)
 {
 	int err;
@@ -1037,6 +1128,7 @@ static int alsps_probe(void)
 		ALSPS_ERR("unable to register alsps input device!\n");
 		goto exit_alloc_input_dev_failed;
 	}
+
 	ALSPS_LOG("----alsps_probe OK !!\n");
 	return 0;
 
@@ -1068,6 +1160,9 @@ static int alsps_remove(void)
 
 static int __init alsps_init(void)
 {
+	struct platform_device *pdev;
+	int rc = -1;
+
 	ALSPS_FUN();
 
 	if (alsps_probe()) {
@@ -1075,7 +1170,22 @@ static int __init alsps_init(void)
 		return -ENODEV;
 	}
 
+	rc = platform_driver_register(&alsps_driver);
+	if (rc) {
+		ALSPS_ERR("failed to register als platform driver\n");
+		return -ENODEV;
+	}
+
+	pdev = platform_device_register_simple("alsps", -1, NULL, 0);
+	if (IS_ERR(pdev)) {
+		rc = PTR_ERR(pdev);
+		goto exit;
+	}
+
 	return 0;
+exit:
+	platform_driver_unregister(&alsps_driver);
+	return rc;
 }
 
 static void __exit alsps_exit(void)

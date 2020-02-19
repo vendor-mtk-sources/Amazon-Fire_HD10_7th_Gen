@@ -1315,7 +1315,9 @@
 
 		smi_common: smi@14022000 {
 			compatible = "mediatek,mt8173-smi";
-			reg = <0 0x14022000 0 0x1000>;
+			reg = <0 0x14022000 0 0x1000>,
+			      <0 0x14000100 0 0x10>;
+			reg-names = "", "mmsys_cg_con0_base";
 			power-domains = <&scpsys MT8173_POWER_DOMAIN_DISP>;
 			clocks = <&mmsys CLK_MM_SMI_COMMON>,
 				 <&mmsys CLK_MM_SMI_COMMON>;

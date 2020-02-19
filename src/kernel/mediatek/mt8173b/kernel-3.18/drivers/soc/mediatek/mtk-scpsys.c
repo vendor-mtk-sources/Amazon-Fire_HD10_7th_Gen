@@ -169,6 +169,8 @@ static const struct scp_domain_data scp_domain_data[] = {
 
 #define NUM_DOMAINS	ARRAY_SIZE(scp_domain_data)
 
+typedef void (power_state_fn)(struct device *dev, int state);
+
 struct scp;
 
 struct scp_domain {
@@ -177,6 +179,8 @@ struct scp_domain {
 	struct clk *clk[MAX_CLKS];
 	const struct scp_domain_data *data;
 	struct regulator *supply;
+	power_state_fn *power_state_cb;
+	struct device *power_state_dev;
 };
 
 struct scp {
@@ -186,6 +190,26 @@ struct scp {
 	void __iomem *base;
 	struct regmap *infracfg;
 };
+
+int set_power_state_cb(struct device *dev, power_state_fn *cb)
+{
+	struct generic_pm_domain *genpd;
+	struct scp_domain *scpd;
+
+	genpd = dev_to_genpd(dev);
+	if (IS_ERR(genpd))
+		return -EINVAL;
+
+	scpd = container_of(genpd, struct scp_domain, genpd);
+
+	if (scpd->power_state_cb)
+		return -EBUSY;
+
+	scpd->power_state_cb = cb;
+	scpd->power_state_dev = dev;
+
+	return 0;
+}
 
 static int scpsys_domain_is_on(struct scp_domain *scpd)
 {
@@ -296,6 +320,9 @@ static int scpsys_power_on(struct generic_pm_domain *genpd)
 			goto err_pwr_ack;
 	}
 
+	if (scpd->power_state_cb)
+		scpd->power_state_cb(scpd->power_state_dev, 1);
+
 	return 0;
 
 err_pwr_ack:
@@ -323,6 +350,9 @@ static int scpsys_power_off(struct generic_pm_domain *genpd)
 	u32 val;
 	int ret;
 	int i;
+
+	if (scpd->power_state_cb)
+		scpd->power_state_cb(scpd->power_state_dev, 0);
 
 	if (scpd->data->bus_prot_mask) {
 		ret = mtk_infracfg_set_bus_protection(scp->infracfg,

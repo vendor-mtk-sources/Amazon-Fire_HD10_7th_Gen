@@ -1699,7 +1699,7 @@ priv_get_struct(IN struct net_device *prNetDev,
 	WLAN_STATUS rStatus = WLAN_STATUS_SUCCESS;
 	P_STA_RECORD_T prStaRec = NULL;
 	INT_8 noise = 0;
-	char buf[256];
+	char buf[512];
 	P_WAKEUP_STATISTIC *prWakeupSta = NULL;
 
 	kalMemZero(&aucOidBuf[0], sizeof(aucOidBuf));
@@ -2013,6 +2013,8 @@ priv_get_struct(IN struct net_device *prNetDev,
 			return status;
 	}
 	case PRIV_CMD_INT_STAT:
+		kalMemZero(buf, 512);
+
 		prWakeupSta = prGlueInfo->prAdapter->arWakeupStatistic;
 		pos += snprintf(buf, sizeof(buf),
 				"Abnormal Interrupt:%d\n"
@@ -2031,7 +2033,7 @@ priv_get_struct(IN struct net_device *prNetDev,
 				prWakeupSta[6].u2Count);
 		for (i = 0; i < EVENT_ID_END; i++) {
 			if (prGlueInfo->prAdapter->wake_event_count[i] > 0)
-				pos += snprintf(buf + pos, sizeof(buf),
+				pos += snprintf(buf + pos, sizeof(buf) - pos,
 						"RX EVENT[0x%0x]:%d\n", i,
 						prGlueInfo->prAdapter->wake_event_count[i]);
 		}

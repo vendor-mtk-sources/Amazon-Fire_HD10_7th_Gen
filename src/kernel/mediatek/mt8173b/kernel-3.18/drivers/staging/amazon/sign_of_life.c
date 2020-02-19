@@ -467,7 +467,7 @@ void life_cycle_log_to_metrics(void)
 	char *lifecycle_metrics_prefix = "life_cycle_metrics";
 
 	/* Log in metrics */
-	snprintf(buf, LIFE_CYCLE_METRICS_STR_LEN, "%s:lc_reason=%s;CT;1:NR",
+	snprintf(buf, LIFE_CYCLE_METRICS_STR_LEN, "%s:lc_reason=%s;DV;1:NR",
 		 lifecycle_metrics_prefix,
 		 life_cycle_metrics[p_dev_sol->life_cycle_reason_idx]);
 	log_to_metrics(ANDROID_LOG_INFO, "LifeCycleReason", buf);

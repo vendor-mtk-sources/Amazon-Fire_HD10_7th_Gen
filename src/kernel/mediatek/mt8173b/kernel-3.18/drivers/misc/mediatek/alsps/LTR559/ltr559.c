@@ -186,7 +186,7 @@ static int dynamic_calibrate = 0;
 // I2C Read
 static int ltr559_i2c_read_reg(u8 regnum)
 {
-    u8 buffer[1],reg_value[1];
+	u8 buffer[1] = {0}, reg_value[1] = {0};
 	int res = 0;
 
 	mutex_lock(&ltr559_mutex);
@@ -194,15 +194,16 @@ static int ltr559_i2c_read_reg(u8 regnum)
 	res = i2c_master_send(ltr559_obj->client, buffer, 0x1);
 	if(res <= 0)
 	{
-	   APS_ERR("read reg send res = %d\n",res);
-		return res;
+		APS_ERR("read reg send res = %d\n",res);
+		goto out;
 	}
 	res = i2c_master_recv(ltr559_obj->client, reg_value, 0x1);
 	if(res <= 0)
 	{
 		APS_ERR("read reg recv res = %d\n",res);
-		return res;
+		goto out;
 	}
+out:
 	mutex_unlock(&ltr559_mutex);
 	return reg_value[0];
 }
@@ -405,27 +406,33 @@ static int ltr559_ps_enable(struct i2c_client *client, int enable)
 #ifdef SUPPORT_PSENSOR
 static int ltr559_ps_read(struct i2c_client *client, u16 *data)
 {
+	struct ltr559_priv *obj = i2c_get_clientdata(client);
 	int psval_lo, psval_hi, psdata;
+
+	if (atomic_read(&obj->ps_suspend)) {
+		psdata = 0;
+		goto out;
+	}
 
 	psval_lo = ltr559_i2c_read_reg(LTR559_PS_DATA_0);
 	APS_DBG("ps_rawdata_psval_lo = %d\n", psval_lo);
 	if (psval_lo < 0){
-	    APS_DBG("psval_lo error\n");
+		APS_DBG("psval_lo error\n");
 		psdata = psval_lo;
 		goto out;
 	}
 
 	psval_hi = ltr559_i2c_read_reg(LTR559_PS_DATA_1);
-    APS_DBG("ps_rawdata_psval_hi = %d\n", psval_hi);
+	APS_DBG("ps_rawdata_psval_hi = %d\n", psval_hi);
 	if (psval_hi < 0){
-	    APS_DBG("psval_hi error\n");
+		APS_DBG("psval_hi error\n");
 		psdata = psval_hi;
 		goto out;
 	}
 
 	psdata = ((psval_hi & 7)* 256) + psval_lo;
 	*data = psdata;
-    APS_DBG("ltr559_ps_read: ps_rawdata = %d\n", psdata);
+	APS_DBG("ltr559_ps_read: ps_rawdata = %d\n", psdata);
 
 out:
 	final_prox_val = psdata;
@@ -554,10 +561,16 @@ static int ltr559_als_enable(struct i2c_client *client, int enable)
 
 static int ltr559_als_read(struct i2c_client *client, u16* data)
 {
+	struct ltr559_priv *obj = i2c_get_clientdata(client);
 	int alsval_ch0_lo, alsval_ch0_hi, alsval_ch0;
 	int alsval_ch1_lo, alsval_ch1_hi, alsval_ch1;
 	int luxdata_int;
 	int ratio;
+
+	if (atomic_read(&obj->als_suspend)) {
+		luxdata_int = 0;
+		goto out;
+	}
 
 	alsval_ch1_lo = ltr559_i2c_read_reg(LTR559_ALS_DATA_CH1_0);
 	alsval_ch1_hi = ltr559_i2c_read_reg(LTR559_ALS_DATA_CH1_1);
@@ -569,11 +582,10 @@ static int ltr559_als_read(struct i2c_client *client, u16* data)
 	alsval_ch0 = (alsval_ch0_hi * 256) + alsval_ch0_lo;
 	APS_DBG("alsval_ch0_lo = %d,alsval_ch0_hi=%d,alsval_ch0=%d\n",alsval_ch0_lo,alsval_ch0_hi,alsval_ch0);
 
-    if((alsval_ch1==0)||(alsval_ch0==0))
-    {
-        luxdata_int = 0;
-        goto out;
-    }
+	if((alsval_ch1==0)||(alsval_ch0==0)) {
+		luxdata_int = 0;
+		goto out;
+	}
 
 	ratio = (alsval_ch1 * 100) / (alsval_ch0 + alsval_ch1);
 	APS_DBG("ratio = %d  gainrange = %d\n", ratio, als_gainrange);

@@ -147,6 +147,10 @@ typedef enum _ENUM_CMD_ID_T {
 	CMD_ID_SET_GSCAN_MAC_ADDR,	/* 0x65 (Set) */
 	CMD_ID_GET_GSCAN_RESULT,	/* 0x66 (Get) */
 
+#if CFG_SUPPORT_ROAMING_SKIP_ONE_AP
+	CMD_ID_SET_ROAMING_SKIP = 0x6D, /* 0x6D (Set) used to setting roaming skip*/
+#endif
+
 	CMD_ID_GET_NIC_CAPABILITY = 0x80,	/* 0x80 (Query) */
 	CMD_ID_GET_LINK_QUALITY,	/* 0x81 (Query) */
 	CMD_ID_GET_STATISTICS,	/* 0x82 (Query) */

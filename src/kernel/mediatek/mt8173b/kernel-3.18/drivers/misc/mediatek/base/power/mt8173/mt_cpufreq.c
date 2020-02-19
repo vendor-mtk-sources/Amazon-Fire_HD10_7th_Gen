@@ -473,15 +473,15 @@ static unsigned int read_efuse_speed(enum mt_cpu_dvfs_id id)
 		efuse = _GET_BITS_VAL_(2:0, get_devinfo_with_index(CPUFREQ_EFUSE_INDEX));
 		switch (efuse) {
 		case 0:
-			lv = CPU_LEVEL_2;	/* default = sloane = [1.6G, 2.0G] */
+			lv = CPU_LEVEL_2;	/* default = abc123 = [1.6G, 2.0G] */
 #ifdef CONFIG_TB8173_P1
 			lv = CPU_LEVEL_4;	/* p1 = [1.4G, 1.8G] */
 #endif
 #ifdef CONFIG_TB8173_P1_PLUS
 			lv = CPU_LEVEL_2;	/* p1_plus = [1.6G, 2.0G], set to [1.8G, 2.1G] for SB IC */
 #endif
-#ifdef CONFIG_SND_SOC_MT8173_SLOANE
-			lv = CPU_LEVEL_2;	/* sloane = [1.6G, 2.0G] */
+#ifdef CONFIG_SND_SOC_MT8173_abc123
+			lv = CPU_LEVEL_2;	/* abc123 = [1.6G, 2.0G] */
 #endif
 #ifdef CONFIG_BX8173_P12
 			lv = CPU_LEVEL_4;	/* bx8173p12 = [1.4G, 1.8G] */
@@ -515,15 +515,15 @@ static unsigned int read_efuse_speed(enum mt_cpu_dvfs_id id)
 		efuse = _GET_BITS_VAL_(29:28, get_devinfo_with_index(CPUFREQ_EFUSE_INDEX));
 		switch (efuse) {
 		case 0:
-			lv = CPU_LEVEL_3;	/* default = sloane = [1.6G, 2.0G] */
+			lv = CPU_LEVEL_3;	/* default = abc123 = [1.6G, 2.0G] */
 #ifdef CONFIG_TB8173_P1
 			lv = CPU_LEVEL_5;	/* p1 = [1.4G, 1.8G] */
 #endif
 #ifdef CONFIG_TB8173_P1_PLUS
 			lv = CPU_LEVEL_3;	/* p1_plus = [1.6G, 2.0G], set to [1.8G, 2.1G] for SB IC */
 #endif
-#ifdef CONFIG_SND_SOC_MT8173_SLOANE
-			lv = CPU_LEVEL_3;	/* sloane = [1.6G, 2.0G] */
+#ifdef CONFIG_SND_SOC_MT8173_abc123
+			lv = CPU_LEVEL_3;	/* abc123 = [1.6G, 2.0G] */
 #endif
 #ifdef CONFIG_BX8173_P12
 			lv = CPU_LEVEL_5;	/* bx8173p12 = [1.4G, 1.8G] */

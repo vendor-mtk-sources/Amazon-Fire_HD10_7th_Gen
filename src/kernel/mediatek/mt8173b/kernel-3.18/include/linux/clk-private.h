@@ -72,6 +72,9 @@ struct clk {
 
 #endif
 	struct kref		ref;
+#if defined(CONFIG_AMAZON_DEBUG_CLK)
+	bool			ignore_dbg;
+#endif
 };
 
 /*

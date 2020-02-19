@@ -474,7 +474,7 @@ void rt5514_parse_header(struct snd_soc_codec *codec, const u8 *buf)
 			i, sMicFWSubHeader.TDArray[i].Addr);
 
 		snprintf(file_path, sizeof(file_path),"SMicTD%u.dat", rt5514->dsp_enabled);
-		request_firmware(&fw, file_path, codec->dev);
+		request_firmware(&fw, file_path, /*codec->dev*/NULL);
 		if (fw) {
 			rt5514_spi_burst_write(sMicFWSubHeader.TDArray[i].Addr,
 				fw->data, ((fw->size/8)+1)*8);
@@ -572,7 +572,7 @@ static int rt5514_set_dsp_mode(struct snd_soc_codec *codec, int DSPMode)
 			}
 			regcache_cache_bypass(rt5514->regmap, true);
 			rt5514_enable_dsp_clock(rt5514);
-			request_firmware(&fw, "SMicBin.dat", codec->dev);
+			request_firmware(&fw, "SMicBin.dat", /*codec->dev*/NULL);
 			if (fw)
 			{
 				rt5514_parse_header(codec, fw->data);

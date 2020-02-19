@@ -14,6 +14,11 @@
 #ifndef _BATTERY_METER_H
 #define _BATTERY_METER_H
 
+#ifdef CONFIG_IDME
+#define BATTERY_ID_ATL 0x841
+#define BATTERY_ID_DSY 0x831
+#endif
+
 #if defined(CONFIG_AMAZON_METRICS_LOG)
 extern signed int gFG_BATT_CAPACITY_aging;
 extern signed int gFG_BATT_CAPACITY;

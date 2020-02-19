@@ -94,8 +94,13 @@ struct PMU_ChargerStruct {
 	s32 bat_charging_state;
 	u32 bat_vol;
 	bool bat_in_recharging_state;
+	u32 recharge_cnt;
 	u32 Vsense;
 	bool charger_exist;
+#ifdef CONFIG_MTK_BATTERY_CVR_SUPPORT
+	bool cv_voltage_changed;
+#endif
+	u32 charger_plugin_cnt;
 	u32 charger_vol;
 	s32 charger_protect_status;
 	s32 ICharging;
@@ -162,6 +167,11 @@ extern bool ta_cable_out_occur;
 extern bool is_ta_connect;
 extern bool ta_vchr_tuning;
 extern int ta_v_chr_org;
+#endif
+
+#ifdef CONFIG_MTK_BATTERY_CVR_SUPPORT
+extern s32 gFG_CV_Battery_Voltage;
+extern s32 gFG_CV_Voltage_Reduction_Supported;
 #endif
 
 static inline int get_bat_average_voltage(void)
@@ -384,6 +394,10 @@ extern int do_jeita_state_machine(void);
 #define wake_up_bat()			do {} while (0)
 #define BAT_Get_Battery_Voltage(polling_mode)	({ 0; })
 
+#endif
+
+#ifdef CONFIG_MTK_BATTERY_CVR_SUPPORT
+extern void init_jeita_cv_voltage_from_sysfs(void);
 #endif
 
 #endif				/* #ifndef BATTERY_COMMON_H */

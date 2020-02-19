@@ -2990,6 +2990,11 @@ VOID nicTxProcessTxDoneEvent(IN P_ADAPTER_T prAdapter, IN P_WIFI_EVENT_T prEvent
 #endif
 
 	if (prMsduInfo) {
+		if (prMsduInfo->eSrc == TX_PACKET_MGMT && prTxDone->ucStatus != 0) {
+			DBGLOG(TX, ERROR, "MGMT FRAME TX FAIL Status[%u] MAC Frame Type[0x%x]\n",
+					prTxDone->ucStatus,
+					((P_WLAN_AUTH_FRAME_T)(prMsduInfo->prPacket))->u2FrameCtrl);
+		}
 		prMsduInfo->pfTxDoneHandler(prAdapter, prMsduInfo, (ENUM_TX_RESULT_CODE_T) (prTxDone->ucStatus));
 
 		if (prMsduInfo->eSrc == TX_PACKET_MGMT)

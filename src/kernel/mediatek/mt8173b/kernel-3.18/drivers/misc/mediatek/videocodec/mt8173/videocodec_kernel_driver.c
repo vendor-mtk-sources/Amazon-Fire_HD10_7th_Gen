@@ -203,7 +203,7 @@ static VAL_UINT32_T gu4L2CCounter;	/* mutex : L2CLock */
 static VAL_BOOL_T bIsOpened = VAL_FALSE;	/* mutex : IsOpenedLock */
 static VAL_UINT32_T gu4HwVencIrqStatus;	/* hardware VENC IRQ status (VP8/H264) */
 
-static VAL_UINT32_T gu4VdecPWRCounter;	/* mutex : VdecPWRLock */
+VAL_UINT32_T gu4VdecPWRCounter;	/* mutex : VdecPWRLock */
 static VAL_UINT32_T gu4VencPWRCounter;	/* mutex : VencPWRLock */
 
 static VAL_UINT32_T gLockTimeOutCount;
@@ -346,6 +346,10 @@ void vdec_power_on(void)
 	/* enable_clock(MT_CG_INFRA_L2C_SRAM, "VDEC"); */
 #endif
 #endif
+	mutex_lock(&VdecPWRLock);
+	gu4VdecPWRCounter++;
+	mutex_unlock(&VdecPWRLock);
+
 }
 
 void vdec_power_off(void)
@@ -366,6 +370,7 @@ void vdec_power_off(void)
 		/* disable_clock(MT_CG_INFRA_L2C_SRAM, "VDEC"); */
 #endif
 #endif
+		gu4VdecPWRCounter--;
 	}
 	mutex_unlock(&VdecPWRLock);
 }
@@ -2660,6 +2665,66 @@ static int vcodec_remove(struct platform_device *pDev)
 	return 0;
 }
 
+static int vcodec_suspend(struct platform_device *pdev, pm_message_t mesg)
+{
+	if (mutex_trylock(&VdecPWRLock) == 1)
+	{
+		if (gu4VdecPWRCounter > 0)
+		{
+			MODULE_MFV_LOGE("vcodec_suspend count=%d\n",gu4VdecPWRCounter);
+			mutex_unlock(&VdecPWRLock);
+			return -EBUSY;
+		} else {
+			mutex_unlock(&VdecPWRLock);
+			return 0;
+		}
+	}  else {
+		return -EBUSY;
+	}
+}
+
+static int vcodec_resume(struct platform_device *pdev)
+{
+	MODULE_MFV_LOGD("vcodec_resume\n");
+	return 0;
+}
+
+/*---------------------------------------------------------------------------*/
+#ifdef CONFIG_PM
+/*---------------------------------------------------------------------------*/
+
+static int mtkvdec_pm_suspend(struct device *device)
+{
+	struct platform_device *pdev = to_platform_device(device);
+
+	BUG_ON(pdev == NULL);
+
+	return vcodec_suspend(pdev, PMSG_SUSPEND);
+}
+
+static int mtkvdec_pm_resume(struct device *device)
+{
+	struct platform_device *pdev = to_platform_device(device);
+
+	BUG_ON(pdev == NULL);
+
+	return vcodec_resume(pdev);
+}
+
+/*---------------------------------------------------------------------------*/
+#else				/*CONFIG_PM */
+/*---------------------------------------------------------------------------*/
+#define mtkvdec_pm_suspend NULL
+#define mtkvdec_pm_resume NULL
+/*---------------------------------------------------------------------------*/
+#endif				/*CONFIG_PM */
+/*---------------------------------------------------------------------------*/
+
+const struct dev_pm_ops mtkvdec_pm_ops = {
+	.suspend = mtkvdec_pm_suspend,
+	.resume = mtkvdec_pm_resume,
+};
+
 #ifdef CONFIG_OF
 /* VDEC main device */
 static const struct of_device_id vcodec_of_ids[] = {
@@ -2673,6 +2738,9 @@ static struct platform_driver VCodecDriver = {
 	.driver = {
 		   .name = VCODEC_DEVNAME,
 		   .owner = THIS_MODULE,
+#ifdef CONFIG_PM
+		   .pm = &mtkvdec_pm_ops,
+#endif
 		   .of_match_table = vcodec_of_ids,
 		   }
 };

@@ -425,7 +425,7 @@ int32_t cmdq_core_set_secure_thread_exec_counter(const int32_t thread, const uin
 	const uint32_t offset = CMDQ_SEC_SHARED_MEM_THR_CNT_BASE + thread * sizeof(uint32_t);
 	uint32_t *pVA = NULL;
 
-	if (0 > cmdq_core_is_a_secure_thread(thread)) {
+	if (false == cmdq_core_is_a_secure_thread(thread)) {
 		CMDQ_ERR("%s, invalid param, thread: %d\n", __func__, thread);
 		return -EFAULT;
 	}
@@ -453,7 +453,7 @@ int32_t cmdq_core_get_secure_thread_exec_counter(const int32_t thread, uint32_t 
 	uint32_t *pVA;
 	uint32_t value;
 
-	if (0 > cmdq_core_is_a_secure_thread(thread)) {
+	if (false == cmdq_core_is_a_secure_thread(thread)) {
 		CMDQ_ERR("%s, invalid param, thread: %d\n", __func__, thread);
 		return -EFAULT;
 	}
@@ -3701,7 +3701,8 @@ static void cmdq_core_attach_error_task(const struct TaskStruct *pTask, int32_t 
 		    ("=============== [CMDQ] Begin of Error Task[%p] trigger[%lld] Status ===============\n",
 		     pTask, pTask->trigger);
 		cmdq_core_dump_task(pTask);
-		cmdq_core_dump_instructions((uint64_t *) pTask->pVABase, pTask->commandSize);
+		if (pTask->pVABase)
+			cmdq_core_dump_instructions((uint64_t *) pTask->pVABase, pTask->commandSize);
 
 		CMDQ_ERR
 		    ("=============== [CMDQ] End of Error Task[%p] trigger[%lld] Status ===============\n",
@@ -4357,7 +4358,7 @@ static int32_t cmdq_core_handle_wait_task_result_impl(struct TaskStruct *pTask,
 		pNextTask = NULL;
 
 		/* find pTask's jump destination */
-		if (0x10000001 == pTask->pCMDEnd[0]) {
+		if (pTask->pCMDEnd && 0x10000001 == pTask->pCMDEnd[0]) {
 			pNextTask = cmdq_core_search_task_by_pc(pTask->pCMDEnd[-1], pThread);
 		} else {
 			CMDQ_MSG("No next task: LAST instruction : (0x%08x, 0x%08x)\n",
@@ -5479,7 +5480,7 @@ static void cmdq_core_handle_secure_paths_exec_done_notify(const int32_t notifyT
 	const uint32_t startThread = CMDQ_MIN_SECURE_THREAD_ID;
 	const uint32_t endThread = CMDQ_MIN_SECURE_THREAD_ID + CMDQ_MAX_SECURE_THREAD_COUNT;
 
-	memset(secure_exec_counter, 0, 3);
+	memset(secure_exec_counter, 0, sizeof(secure_exec_counter));
 	/* HACK:
 	 * IRQ of the notify thread,
 	 * implies threre are some secure tasks execute done.
@@ -5509,7 +5510,6 @@ static void cmdq_core_handle_secure_paths_exec_done_notify(const int32_t notifyT
 	cmdq_core_get_secure_thread_exec_counter(12, &secure_exec_counter[0]);
 	cmdq_core_get_secure_thread_exec_counter(13, &secure_exec_counter[1]);
 	cmdq_core_get_secure_thread_exec_counter(14, &secure_exec_counter[2]);
-	CMDQ_MSG("debug sec IRQ:receive secure world irq in normal world\n");
 	CMDQ_MSG("%s, raisedIRQ:0x%08x, shared_cookie(%d, %d, %d)\n",
 		 __func__,
 		 raisedIRQ, secure_exec_counter[0], secure_exec_counter[1], secure_exec_counter[2]);
@@ -5823,6 +5823,11 @@ int32_t cmdqCoreSuspend(void)
 			 execThreads, refCount);
 		killTasks = true;
 	}
+
+	spin_lock_irqsave(&gCmdqThreadLock, flags);
+	gCmdqSuspended = true;
+	spin_unlock_irqrestore(&gCmdqThreadLock, flags);
+
 	/*  */
 	/* We need to ensure the system is ready to suspend, */
 	/* so kill all running CMDQ tasks */
@@ -5831,6 +5836,7 @@ int32_t cmdqCoreSuspend(void)
 	if (killTasks) {
 		/* print active tasks */
 		CMDQ_ERR("[SUSPEND] active tasks during suspend:\n");
+		mutex_lock(&gCmdqTaskMutex);
 		list_for_each(p, &gCmdqContext.taskActiveList) {
 			pTask = list_entry(p, struct TaskStruct, listEntry);
 			cmdq_core_dump_task(pTask);
@@ -5852,6 +5858,7 @@ int32_t cmdqCoreSuspend(void)
 				cmdq_core_release_thread(pTask);
 			}
 		}
+		mutex_unlock(&gCmdqTaskMutex);
 
 		/* TODO: skip secure path thread... */
 		/* disable all HW thread */
@@ -5868,10 +5875,6 @@ int32_t cmdqCoreSuspend(void)
 		memset(&gCmdqContext.engine[0], 0, sizeof(gCmdqContext.engine));
 		cmdq_core_reset_engine_struct();
 	}
-
-	spin_lock_irqsave(&gCmdqThreadLock, flags);
-	gCmdqSuspended = true;
-	spin_unlock_irqrestore(&gCmdqThreadLock, flags);
 
 	/* ALWAYS allow suspend */
 	return 0;
@@ -6052,8 +6055,9 @@ static void cmdq_core_consume_waiting_list(struct work_struct *_ignore)
 		thread = cmdq_core_acquire_thread(pTask->engineFlag,
 						  thread_prio, pTask->scenario, needLog,
 						  pTask->secData.isSecure);
+		pThread = &gCmdqContext.thread[thread];
 
-		if (CMDQ_INVALID_THREAD == thread) {
+		if (CMDQ_INVALID_THREAD == thread || NULL == pThread) {
 			/* have to wait, remain in wait list */
 			CMDQ_MSG("<--THREAD: acquire thread fail, need to wait\n");
 			if (needLog) {
@@ -6084,9 +6088,6 @@ static void cmdq_core_consume_waiting_list(struct work_struct *_ignore)
 			}
 			continue;
 		}
-
-		pThread = &gCmdqContext.thread[thread];
-
 		/* some task is ready to run */
 		threadAcquired = true;
 		/* Assign loop function if the thread should be a loop thread */

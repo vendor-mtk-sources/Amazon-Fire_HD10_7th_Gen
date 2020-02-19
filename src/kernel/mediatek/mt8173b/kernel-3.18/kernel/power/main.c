@@ -693,7 +693,7 @@ static void suspend_metrics_work(struct work_struct *work)
 		"failed_freeze=%d;CT;1,failed_prepare=%d;CT;1,failed_suspend=%d;CT;1,"
 		"failed_suspend_late=%d;CT;1,failed_suspend_noirq=%d;CT;1,"
 		"failed_resume=%d;CT;1,failed_resume_early=%d;CT;1,"
-		"failed_resume_noirq=%d;CT;1,last_failed_dev=%s;CT;1,"
+		"failed_resume_noirq=%d;CT;1,last_failed_dev=%s;DV;1,"
 		"last_failed_errno=%d;CT;1,last_failed_step=%d;CT;1:NR",
 		suspend_stats.success, suspend_stats.fail, suspend_stats.failed_freeze,
 		suspend_stats.failed_prepare, suspend_stats.failed_suspend,

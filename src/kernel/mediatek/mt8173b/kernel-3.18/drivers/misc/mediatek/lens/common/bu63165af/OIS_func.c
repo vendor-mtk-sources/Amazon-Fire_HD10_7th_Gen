@@ -11,14 +11,6 @@
  * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
-/* /////////////////////////////////////////////////////////////////////////// */
-/* File Name    : OIS_func.c */
-/* Function             : Various function for OIS control */
-/* Rule         : Use TAB 4 */
-/*  */
-/* Copyright(c) Rohm Co.,Ltd. All rights reserved */
-/*  */
-/***** ROHM Confidential ***************************************************/
 #define	_USE_MATH_DEFINES	/* RHM_HT 2013.03.24    Add for using "M_PI" in math.h (VS2008) */
 
 #include "OIS_head.h"

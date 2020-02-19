@@ -11,16 +11,6 @@
  * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
-/* /////////////////////////////////////////////////////////////////////////// */
-/* File Name    : OIS_user.c */
-/* Function             : User defined function. */
-/* These functions depend on user's circumstance. */
-/*  */
-/* Rule         : Use TAB 4 */
-/*  */
-/* Copyright(c) Rohm Co.,Ltd. All rights reserved */
-/*  */
-/***** ROHM Confidential ***************************************************/
 #ifndef OIS_USER_C
 #define OIS_USER_C
 #endif

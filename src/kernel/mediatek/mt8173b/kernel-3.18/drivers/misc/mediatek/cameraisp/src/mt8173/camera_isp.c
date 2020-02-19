@@ -34,6 +34,7 @@
 #include <linux/delay.h>
 #include <linux/uaccess.h>
 #include <linux/atomic.h>
+#include <linux/mutex.h>
 #include <linux/sched.h>
 #include <linux/mm.h>
 /*#include "inc/mt_typedefs.h"*/
@@ -226,6 +227,9 @@ struct wakeup_source isp_wake_lock;
 #else
 struct wake_lock isp_wake_lock;
 #endif
+
+static atomic_t  g_EnableClkCnt = ATOMIC_INIT(0);
+static DEFINE_MUTEX(g_ClkMutex);
 
 static volatile int g_bWaitLock;
 /*
@@ -784,10 +788,6 @@ static volatile ISP_RT_BUF_STRUCT *pstRTBuf;
 /* static ISP_DEQUE_BUF_INFO_STRUCT	g_deque_buf	= {0,{}};	// Marked to remove	build warning. */
 
 unsigned long g_Flash_SpinLock;
-
-
-static volatile unsigned int G_u4EnableClockCount;
-
 
 /*******************************************************************************
 *
@@ -3119,60 +3119,51 @@ static void ISP_EnableClock(MBOOL En)
 		*MMSYS_CG_CLR0 = 0x00000003;*CLK_CFG_7 = *CLK_CFG_7 | 0x02000000;*CAM_CTL_CLK_EN = 0x00000009; */
 		/* address map, MMSYS_CG_CLR0:0x14000108,CLK_CFG_7:0x100000b0 */
 #ifdef CONFIG_MTK_CLKMGR
-		spin_lock(&(IspInfo.SpinLockClock));
-		/* LOG_DBG("Camera clock enbled. G_u4EnableClockCount: %d.", G_u4EnableClockCount); */
-		switch (G_u4EnableClockCount) {
-		case 0:
-			/* LOG_INF("MTK_LEGACY:enable clk"); */
-			enable_clock(MT_CG_DISP0_SMI_COMMON, "CAMERA");
-			enable_clock(MT_CG_IMAGE_CAM_SMI, "CAMERA");
-			enable_clock(MT_CG_IMAGE_CAM_CAM, "CAMERA");
-			enable_clock(MT_CG_IMAGE_SEN_TG, "CAMERA");
-			enable_clock(MT_CG_IMAGE_SEN_CAM, "CAMERA");
-			enable_clock(MT_CG_IMAGE_CAM_SV, "CAMERA");
-			/* enable_clock(MT_CG_IMAGE_FD, "CAMERA"); */
-			enable_clock(MT_CG_IMAGE_LARB2_SMI, "CAMERA");
-			break;
-		default:
-			break;
-		}
-		G_u4EnableClockCount++;
-		spin_unlock(&(IspInfo.SpinLockClock));
+		/* LOG_INF("MTK_LEGACY:enable clk"); */
+		mutex_lock(&g_ClkMutex);
+		enable_clock(MT_CG_DISP0_SMI_COMMON, "CAMERA");
+		enable_clock(MT_CG_IMAGE_CAM_SMI, "CAMERA");
+		enable_clock(MT_CG_IMAGE_CAM_CAM, "CAMERA");
+		enable_clock(MT_CG_IMAGE_SEN_TG, "CAMERA");
+		enable_clock(MT_CG_IMAGE_SEN_CAM, "CAMERA");
+		enable_clock(MT_CG_IMAGE_CAM_SV, "CAMERA");
+		/* enable_clock(MT_CG_IMAGE_FD, "CAMERA"); */
+		enable_clock(MT_CG_IMAGE_LARB2_SMI, "CAMERA");
+		atomic_inc(&g_EnableClkCnt);
+		mutex_unlock(&g_ClkMutex);
 #else
 		/*LOG_INF("CCF:prepare_enable clk"); */
-		spin_lock(&(IspInfo.SpinLockClock));
-		G_u4EnableClockCount++;
-		spin_unlock(&(IspInfo.SpinLockClock));
+		mutex_lock(&g_ClkMutex);
 		Prepare_Enable_ccf_clock();
+		atomic_inc(&g_EnableClkCnt);
+		mutex_unlock(&g_ClkMutex);
 #endif
 	} else {		/* Disable clock. */
 #ifdef CONFIG_MTK_CLKMGR
-		spin_lock(&(IspInfo.SpinLockClock));
-		/* LOG_DBG("Camera clock disabled. G_u4EnableClockCount: %d.", G_u4EnableClockCount); */
-		G_u4EnableClockCount--;
-		switch (G_u4EnableClockCount) {
-		case 0:
-			/*LOG_INF("MTK_LEGACY:disable clk"); */
-			/* do disable clock     */
-			disable_clock(MT_CG_IMAGE_CAM_SMI, "CAMERA");
-			disable_clock(MT_CG_IMAGE_CAM_CAM, "CAMERA");
-			disable_clock(MT_CG_IMAGE_SEN_TG, "CAMERA");
-			disable_clock(MT_CG_IMAGE_SEN_CAM, "CAMERA");
-			disable_clock(MT_CG_IMAGE_CAM_SV, "CAMERA");
-			/* disable_clock(MT_CG_IMAGE_FD, "CAMERA"); */
-			disable_clock(MT_CG_IMAGE_LARB2_SMI, "CAMERA");
-			disable_clock(MT_CG_DISP0_SMI_COMMON, "CAMERA");
-			break;
-		default:
-			break;
-		}
-		spin_unlock(&(IspInfo.SpinLockClock));
+		/*LOG_INF("MTK_LEGACY:disable clk"); */
+		/* do disable clock     */
+		mutex_lock(&g_ClkMutex);
+		disable_clock(MT_CG_IMAGE_CAM_SMI, "CAMERA");
+		disable_clock(MT_CG_IMAGE_CAM_CAM, "CAMERA");
+		disable_clock(MT_CG_IMAGE_SEN_TG, "CAMERA");
+		disable_clock(MT_CG_IMAGE_SEN_CAM, "CAMERA");
+		disable_clock(MT_CG_IMAGE_CAM_SV, "CAMERA");
+		/* disable_clock(MT_CG_IMAGE_FD, "CAMERA"); */
+		disable_clock(MT_CG_IMAGE_LARB2_SMI, "CAMERA");
+		disable_clock(MT_CG_DISP0_SMI_COMMON, "CAMERA");
+		atomic_dec(&g_EnableClkCnt);
+		mutex_unlock(&g_ClkMutex);
 #else
 		/*LOG_INF("CCF:disable_unprepare clk\n"); */
-		spin_lock(&(IspInfo.SpinLockClock));
-		G_u4EnableClockCount--;
-		spin_unlock(&(IspInfo.SpinLockClock));
+		mutex_lock(&g_ClkMutex);
+		if (atomic_read(&g_EnableClkCnt) == 0) {
+			LOG_INF("Now: EnableClkCnt=0, just return!");
+			mutex_unlock(&g_ClkMutex);
+			return;
+		}
 		Disable_Unprepare_ccf_clock();
+		atomic_dec(&g_EnableClkCnt);
+		mutex_unlock(&g_ClkMutex);
 #endif
 	}
 }
@@ -11060,7 +11051,6 @@ EXIT:
 		 *  2. CCF: call clk_enable/disable every time
 		 */
 		ISP_EnableClock(MTRUE);
-		LOG_DBG("isp open G_u4EnableClockCount:	%d", G_u4EnableClockCount);
 	}
 
 	/* LOG_DBG("Before spm_disable_sodi()."); */
@@ -11169,7 +11159,6 @@ EXIT:
 	 *  2. CCF: call clk_enable/disable every time
 	 */
 	ISP_EnableClock(MFALSE);
-	LOG_DBG("isp release G_u4EnableClockCount: %d", G_u4EnableClockCount);
 	/*  */
 	LOG_INF("- X. UserCount: %d.", IspInfo.UserCount);
 	return 0;
@@ -11693,32 +11682,52 @@ static MINT32 ISP_suspend(struct platform_device *pDev, pm_message_t Mesg)
 {
 	MUINT32 regTG1Val, regTG2Val;
 
-	if (IspInfo.UserCount == 0) {
-		LOG_DBG("ISP UserCount=0");
-		return 0;
+	if (IspInfo.UserCount != 0) {
+		/* TG_VF_CON[0] (0x15004414[0]): VFDATA_EN. TG1 Take Picture Request. */
+		regTG1Val = ISP_RD32(ISP_ADDR + 0x414);
+		/* TG2_VF_CON[0] (0x150044B4[0]): VFDATA_EN. TG2 Take Picture Request. */
+		regTG2Val = ISP_RD32(ISP_ADDR + 0x4B4);
+
+		LOG_DBG
+		    ("bPass1_On_In_Resume_TG1(%d). bPass1_On_In_Resume_TG2(%d). regTG1Val(0x%08x). regTG2Val(0x%08x)\n",
+		     bPass1_On_In_Resume_TG1, bPass1_On_In_Resume_TG2, regTG1Val, regTG2Val);
+
+		bPass1_On_In_Resume_TG1 = 0;
+		if (regTG1Val & 0x01) {	/* For TG1 Main sensor. */
+			bPass1_On_In_Resume_TG1 = 1;
+			ISP_WR32(ISP_ADDR + 0x414, (regTG1Val & (~0x01)));
+		}
+
+		bPass1_On_In_Resume_TG2 = 0;
+		if (regTG2Val & 0x01) {	/* For TG2 Sub sensor. */
+			bPass1_On_In_Resume_TG2 = 1;
+			ISP_WR32(ISP_ADDR + 0x4B4, (regTG2Val & (~0x01)));
+		}
 	}
 
-	/* TG_VF_CON[0] (0x15004414[0]): VFDATA_EN.     TG1     Take Picture Request. */
-	regTG1Val = ISP_RD32(ISP_ADDR + 0x414);
-	/* TG2_VF_CON[0] (0x150044B4[0]): VFDATA_EN. TG2 Take Picture Request. */
-	regTG2Val = ISP_RD32(ISP_ADDR + 0x4B4);
-
-	LOG_DBG
-	    ("bPass1_On_In_Resume_TG1(%d). bPass1_On_In_Resume_TG2(%d). regTG1Val(0x%08x). regTG2Val(0x%08x)\n",
-	     bPass1_On_In_Resume_TG1, bPass1_On_In_Resume_TG2, regTG1Val, regTG2Val);
-
-	bPass1_On_In_Resume_TG1 = 0;
-	if (regTG1Val & 0x01) {	/* For TG1 Main sensor. */
-		bPass1_On_In_Resume_TG1 = 1;
-		ISP_WR32(ISP_ADDR + 0x414, (regTG1Val & (~0x01)));
+	if (mutex_trylock(&g_ClkMutex) == 0) {
+		LOG_ERR("trylock fail, abort suspend");
+		return -EBUSY;
 	}
-
-	bPass1_On_In_Resume_TG2 = 0;
-	if (regTG2Val & 0x01) {	/* For TG2 Sub sensor. */
-		bPass1_On_In_Resume_TG2 = 1;
-		ISP_WR32(ISP_ADDR + 0x4B4, (regTG2Val & (~0x01)));
+	if (atomic_read(&g_EnableClkCnt) > 0)
+		LOG_WRN("g_EnableClkCnt %d", atomic_read(&g_EnableClkCnt));
+	/* disable clock for g_EnableClkCnt times */
+	while(atomic_read(&g_EnableClkCnt) > 0) {
+#ifdef CONFIG_MTK_CLKMGR
+		disable_clock(MT_CG_DISP0_SMI_COMMON, "CAMERA");
+		disable_clock(MT_CG_IMAGE_CAM_SMI, "CAMERA");
+		disable_clock(MT_CG_IMAGE_CAM_CAM, "CAMERA");
+		disable_clock(MT_CG_IMAGE_SEN_TG, "CAMERA");
+		disable_clock(MT_CG_IMAGE_SEN_CAM, "CAMERA");
+		disable_clock(MT_CG_IMAGE_CAM_SV, "CAMERA");
+		disable_clock(MT_CG_IMAGE_LARB2_SMI, "CAMERA");
+		atomic_dec(&g_EnableClkCnt);
+#else	/* Camera CCF & PM */
+		Disable_Unprepare_ccf_clock();
+		atomic_dec(&g_EnableClkCnt);
+#endif
 	}
-
+	mutex_unlock(&g_ClkMutex);
 	return 0;
 }
 
@@ -12187,7 +12196,6 @@ EXPORT_SYMBOL(ISP_MCLK3_EN);
 int32_t ISP_MDPClockOnCallback(uint64_t engineFlag)
 {
 	/* LOG_DBG("ISP_MDPClockOnCallback"); */
-	LOG_DBG("+MDPEn:%d", G_u4EnableClockCount);
 	ISP_EnableClock(MTRUE);
 
 	return 0;
@@ -12215,7 +12223,6 @@ int32_t ISP_MDPClockOffCallback(uint64_t engineFlag)
 {
 	/* LOG_DBG("ISP_MDPClockOffCallback"); */
 	ISP_EnableClock(MFALSE);
-	LOG_DBG("-MDPEn:%d", G_u4EnableClockCount);
 	return 0;
 }
 
