@@ -39,6 +39,12 @@ static int lastpc_plt_start(struct lastpc_plt *plt)
 	return 0;
 }
 
+static char lastpc_log_buf[1024];
+char* lastpc_get_log(void)
+{
+	return lastpc_log_buf;
+}
+
 static int lastpc_plt_dump(struct lastpc_plt *plt, char *buf, int len)
 {
 	void __iomem *mcu_base = plt->common->base + 0x410;
@@ -108,6 +114,7 @@ static int lastpc_plt_dump(struct lastpc_plt *plt, char *buf, int len)
 	}
 #endif
 	pr_err("%s", buf);
+	strncpy(lastpc_log_buf, buf, sizeof(lastpc_log_buf));
 
 	return 0;
 

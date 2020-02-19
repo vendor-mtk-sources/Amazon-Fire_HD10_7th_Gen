@@ -2453,10 +2453,7 @@ VOID nicRxProcessDataPacket(IN P_ADAPTER_T prAdapter, IN OUT P_SW_RFB_T prSwRfb)
 					ucShortGI = ((prRxStatusGroup3)->u4RxVector[0] & RX_VT_SHORT_GI) ? 1 : 0;	/* VHTA2 B0 */
 
 					/* ucRate(500kbs) = u4PhyRate(100kbps) / 5, max ucRate = 0xFF */
-					if (arMcsRate2PhyRate[ucMcs].u4PhyRate[ucFrMode][ucShortGI] > 1275)
-						prStaRec->u2LastPhyRate = 0xFF;
-					else
-						prStaRec->u2LastPhyRate = arMcsRate2PhyRate[ucMcs].u4PhyRate[ucFrMode][ucShortGI];
+					prStaRec->u2LastPhyRate = arMcsRate2PhyRate[ucMcs].u4PhyRate[ucFrMode][ucShortGI];
 				}
 			}
 		}

@@ -60,6 +60,19 @@
 #define MP1_AXI_CONFIG          (MCUCFG_BASE + 0x22C)
 #define ACINACTM                (1<<4)
 
+#define SPM_AEE_RR_REC 1
+#if SPM_AEE_RR_REC
+extern void aee_rr_rec_deepidle_val(u32 val);
+enum spm_deepidle_step {
+	SPM_DEEPIDLE_ENTER = 0x00000001,
+	SPM_DEEPIDLE_ENTER_UART_SLEEP = 0x00000003,
+	SPM_DEEPIDLE_ENTER_WFI = 0x000000ff,
+	SPM_DEEPIDLE_LEAVE_WFI = 0x000001ff,
+	SPM_DEEPIDLE_ENTER_UART_AWAKE = 0x000003ff,
+	SPM_DEEPIDLE_LEAVE = 0x00000000
+};
+#endif
+
 /*
  * PCM sequence for cpu deep idle
  */
@@ -345,6 +358,10 @@ wake_reason_t spm_go_to_dpidle(u32 spm_flags, u32 spm_data)
 	struct pwr_ctrl *pwrctrl = __spm_dpidle.pwrctrl;
 	struct spm_lp_scen *lpscen;
 
+#if SPM_AEE_RR_REC
+	aee_rr_rec_deepidle_val(SPM_DEEPIDLE_ENTER);
+#endif
+
 	lpscen = &__spm_dpidle;
 	pcmdesc = lpscen->pcmdesc;
 	pwrctrl = lpscen->pwrctrl;
@@ -363,6 +380,10 @@ wake_reason_t spm_go_to_dpidle(u32 spm_flags, u32 spm_data)
 */
 	mt_cirq_clone_gic();
 	mt_cirq_enable();
+
+#if SPM_AEE_RR_REC
+	aee_rr_rec_deepidle_val(SPM_DEEPIDLE_ENTER_UART_SLEEP);
+#endif
 
 	if (request_uart_to_sleep()) {
 		wr = WR_UART_BUSY;
@@ -383,17 +404,28 @@ wake_reason_t spm_go_to_dpidle(u32 spm_flags, u32 spm_data)
 
 	__spm_kick_pcm_to_run(pwrctrl);
 
+#if SPM_AEE_RR_REC
+	aee_rr_rec_deepidle_val(SPM_DEEPIDLE_ENTER_WFI);
+#endif
+
 	spm_dpidle_before_wfi();
 
 	spm_trigger_wfi_for_dpidle(pwrctrl);
 
 	spm_dpidle_after_wfi();
 
+#if SPM_AEE_RR_REC
+	aee_rr_rec_deepidle_val(SPM_DEEPIDLE_LEAVE_WFI);
+#endif
 	__spm_get_wakeup_status(&wakesta);
 
 	__spm_clean_after_wakeup();
 
 	request_uart_to_wakeup();
+
+#if SPM_AEE_RR_REC
+	aee_rr_rec_deepidle_val(SPM_DEEPIDLE_ENTER_UART_AWAKE);
+#endif
 
 	if (pwrctrl->enable_log)
 		wr = __spm_output_wake_reason(&wakesta, pcmdesc, false);
@@ -410,6 +442,9 @@ wake_reason_t spm_go_to_dpidle(u32 spm_flags, u32 spm_data)
 	/* set PMIC WRAP table for normal power control */
 	mt_cpufreq_set_pmic_phase(PMIC_WRAP_PHASE_NORMAL); /* TODO: wait pmic & cpufreq ready */
 
+#if SPM_AEE_RR_REC
+	aee_rr_rec_deepidle_val(SPM_DEEPIDLE_LEAVE);
+#endif
 	return wr;
 }
 

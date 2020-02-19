@@ -480,6 +480,9 @@ struct input_keymap_entry {
 
 #define KEY_MICMUTE		248	/* Mute / unmute the microphone */
 
+#define KEY_LAB126_TP_LOCK 249
+#define KEY_LAB126_TP_UNLOCK 250
+
 /* Code 255 is reserved for special needs of AT keyboard driver */
 
 #define BTN_MISC		0x100

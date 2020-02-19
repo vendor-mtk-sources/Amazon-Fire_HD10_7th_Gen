@@ -45,6 +45,7 @@
 #ifdef CONFIG_AMAZON_METRICS_LOG
 #include <linux/metricslog.h>
 #define TMP103_METRICS_STR_LEN 128
+static unsigned long virtual_sensor_temp = 25000;
 #endif
 
 #include "thermal_core.h"
@@ -57,6 +58,14 @@
 
 static LIST_HEAD(thermal_sensor_list);
 static DEFINE_MUTEX(therm_lock);
+
+#ifdef CONFIG_AMAZON_METRICS_LOG
+unsigned long get_virtualsensor_temp(void)
+{
+	return virtual_sensor_temp/1000;
+}
+EXPORT_SYMBOL(get_virtualsensor_temp);
+#endif
 
 #define PREFIX "thermalsensor:def"
 static int tmp103_thermal_get_temp(struct thermal_zone_device *thermal,
@@ -129,6 +138,9 @@ static int tmp103_thermal_get_temp(struct thermal_zone_device *thermal,
 #endif
 
 	*t = (unsigned long) tempv;
+#ifdef CONFIG_AMAZON_METRICS_LOG
+	virtual_sensor_temp = (unsigned long) tempv;
+#endif
 
 	return 0;
 }

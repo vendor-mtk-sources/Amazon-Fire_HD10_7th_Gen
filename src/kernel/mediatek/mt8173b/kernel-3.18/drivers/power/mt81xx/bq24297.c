@@ -1139,6 +1139,12 @@ u8 bq24297_get_reg9_fault_type(u8 reg9_fault)
 	return ret;
 }
 
+void bq24297_get_fault_type(u8 *type)
+{
+	*type = bq24297_get_reg9_fault_type(bq24297_reg[bq24297_CON9]);
+}
+EXPORT_SYMBOL(bq24297_get_fault_type);
+
 void bq24297_polling_reg09(void)
 {
 	int i, i2;

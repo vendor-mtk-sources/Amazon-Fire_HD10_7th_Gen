@@ -224,14 +224,14 @@ module_param_call(stop_on_user_error, binder_set_stop_on_user_error,
 #define binder_debug(mask, x...) \
 	do { \
 		if (binder_debug_mask & mask) \
-			pr_info(x); \
+			pr_info_ratelimited(x); \
 	} while (0)
 
 #ifdef BINDER_MONITOR
 #define binder_user_error(x...) \
 	do { \
 		if (binder_debug_mask & BINDER_DEBUG_USER_ERROR) \
-			pr_err(x); \
+			pr_err_ratelimited(x); \
 		if (binder_stop_on_user_error) \
 			binder_stop_on_user_error = 2; \
 	} while (0)
@@ -239,7 +239,7 @@ module_param_call(stop_on_user_error, binder_set_stop_on_user_error,
 #define binder_user_error(x...) \
 	do { \
 		if (binder_debug_mask & BINDER_DEBUG_USER_ERROR) \
-			pr_info(x); \
+			pr_info_ratelimited(x); \
 		if (binder_stop_on_user_error) \
 			binder_stop_on_user_error = 2; \
 	} while (0)
@@ -1586,7 +1586,7 @@ static struct binder_buffer *binder_alloc_buf(struct binder_proc *proc,
 #endif
 	if (is_async && proc->free_async_space < size + sizeof(struct binder_buffer)) {
 #ifdef MTK_BINDER_DEBUG
-		pr_err("%d: binder_alloc_buf size %zd failed, no async space left (%zd)\n",
+		binder_user_error("%d: binder_alloc_buf size %zd failed, no async space left (%zd)\n",
 		       proc->pid, size, proc->free_async_space);
 #else
 		binder_debug(BINDER_DEBUG_BUFFER_ALLOC,
@@ -3432,7 +3432,7 @@ retry:
 			if (put_user(thread->return_error2, (uint32_t __user *) ptr))
 				return -EFAULT;
 			ptr += sizeof(uint32_t);
-			pr_err
+			pr_err_ratelimited
 			    ("read put err2 %u to user %p, thread error %u:%u\n",
 			     thread->return_error2, ptr, thread->return_error,
 			     thread->return_error2);
@@ -3444,7 +3444,7 @@ retry:
 		if (put_user(thread->return_error, (uint32_t __user *) ptr))
 			return -EFAULT;
 		ptr += sizeof(uint32_t);
-		pr_err("read put err %u to user %p, thread error %u:%u\n",
+		pr_err_ratelimited("read put err %u to user %p, thread error %u:%u\n",
 		       thread->return_error, ptr, thread->return_error, thread->return_error2);
 		binder_stat_br(proc, thread, thread->return_error);
 		thread->return_error = BR_OK;

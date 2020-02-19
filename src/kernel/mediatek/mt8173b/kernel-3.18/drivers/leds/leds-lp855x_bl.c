@@ -866,15 +866,23 @@ static int lp855x_probe(struct i2c_client *cl, const struct i2c_device_id *id)
 		goto err_dev;
 	}
 
+	lp855x_led_set_brightness(
+				&(lp->led_data->bl),
+				pdata->initial_brightness);
+
+	#if defined(CONFIG_MTK_KERNEL_POWER_OFF_CHARGING)
+	boot_mode = get_boot_mode();
+	if( boot_mode == KERNEL_POWER_OFF_CHARGING_BOOT ||
+		boot_mode == LOW_POWER_OFF_CHARGING_BOOT) {
+		lp8557_bl_off(lp);
+	}
+	#endif
+
 	ret = sysfs_create_group(&lp->dev->kobj, &lp855x_attr_group);
 	if (ret) {
 		dev_err(lp->dev, " failed to register sysfs. err: %d\n", ret);
 		goto err_sysfs;
 	}
-
-	lp855x_led_set_brightness(
-				&(lp->led_data->bl),
-				pdata->initial_brightness);
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	lp->early_suspend.suspend = lp855x_early_suspend;

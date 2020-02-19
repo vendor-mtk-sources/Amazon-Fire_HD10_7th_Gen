@@ -43,6 +43,8 @@ static int mtk_cpu_num;
 
 static int ram_console_init_done;
 
+extern char* lastpc_get_log(void);
+
 /*
    This group of API call by sub-driver module to report reboot reasons
    aee_rr_* stand for previous reboot reason
@@ -387,6 +389,10 @@ static int ram_console_lastk_show(struct ram_console_buffer *buffer, struct seq_
 		seq_write(m, buffer, ram_console_buffer->sz_buffer);
 	}
 #endif
+
+	seq_printf(m, "%s\n", lastpc_get_log());
+	seq_printf(m, "deepidle status = 0x%x\n", LAST_RRR_VAL(deepidle_data));
+
 	return 0;
 }
 

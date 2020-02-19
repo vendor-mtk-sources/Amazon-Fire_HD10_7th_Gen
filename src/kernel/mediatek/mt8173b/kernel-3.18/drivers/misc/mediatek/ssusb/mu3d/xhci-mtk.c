@@ -519,11 +519,20 @@ static void ssusb_mode_switch(struct work_struct *work)
 void mtk_xhci_halt(struct ssusb_mtk *ssusb)
 {
 
-	struct usb_hcd	*hcd = platform_get_drvdata(ssusb->xhci);
-	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
-	spin_lock_irq(&xhci->lock);
-	xhci_halt(xhci);
-	spin_unlock_irq(&xhci->lock);
+	struct usb_hcd	*hcd;
+	struct xhci_hcd *xhci;
+	hcd = platform_get_drvdata(ssusb->xhci);
+	if (!hcd) {
+		mu3d_dbg(K_ERR, "%s hcd is NULL\n", __func__);
+		return;
+	}
+	xhci = hcd_to_xhci(hcd);
+	if (xhci) {
+		spin_lock_irq(&xhci->lock);
+		xhci_halt(xhci);
+		spin_unlock_irq(&xhci->lock);
+	} else
+		mu3d_dbg(K_ERR, "%s xhci is NULL\n", __func__);
 }
 
 static void ssusb_mode_switch_lowpw(struct work_struct *work)
@@ -537,13 +546,13 @@ static void ssusb_mode_switch_lowpw(struct work_struct *work)
 
 	if (cur_id_state == IDPIN_IN) {
 		mu3d_dbg(K_DEBUG, "%s to host\n", __func__);
+		mtk_host_wakelock_lock(&otg_switch->xhci_wakelock);
 		ssusb_power_restore(ssusb);
 		mtk_xhci_ip_init(ssusb);
 		ssusb_host_init(ssusb);
 
 		switch_set_state(&otg_switch->otg_state, 1);
 		ssusb_set_vbus(&otg_switch->p0_vbus, 1);
-		mtk_host_wakelock_lock(&otg_switch->xhci_wakelock);
 
 		/* expect next isr is for id-pin out action */
 		otg_switch->next_idpin_state = IDPIN_OUT;

@@ -133,6 +133,13 @@ void rt5514_SetRP_onIdle(void)
 		return;
 
 	mutex_lock(&rt5514_dsp_pointer->dma_lock);
+
+	if (!rt5514_dsp_pointer->buf_base) {
+		pr_info("rt5514_SetRP_onIdle DSP Buffer Range is not initialized.\n");
+		mutex_unlock(&rt5514_dsp_pointer->dma_lock);
+		return;
+	}
+
 	rt5514_spi_read_addr(RT5514_BUFFER_VOICE_WP, &tmp_wp);
 	rt5514_spi_read_addr(RT5514_REC_RP, &tmp_rp);
 	pr_info("rt5514_SetRP_onIdle RT5514_REC_RP = 0x%x, RT5514_BUFFER_VOICE_WP = 0x%x", tmp_rp, tmp_wp);

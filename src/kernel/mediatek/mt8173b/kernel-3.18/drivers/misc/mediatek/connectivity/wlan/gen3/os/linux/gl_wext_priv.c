@@ -823,34 +823,6 @@ short_buf:
 }
 #endif
 
-static int
-getLastRxRate(IN struct net_device *prNetDev,
-	     OUT UINT_32 *pLastRxRate)
-{
-	PUINT_32 pu4IntBuf;
-	UINT_32 u4BufLen = 0;
-	int status = 0;
-	P_NDIS_TRANSPORT_STRUCT prNdisReq;
-
-	ASSERT(prNetDev);
-
-	prNdisReq = (P_NDIS_TRANSPORT_STRUCT) &aucOidBuf[0];
-
-	pu4IntBuf = (PUINT_32) &prNdisReq->ndisOidContent[0];
-	pu4IntBuf[0] = 0xa0220000;
-	pu4IntBuf[1] = 0;
-
-	prNdisReq->ndisOidCmd = OID_CUSTOM_SW_CTRL;
-	prNdisReq->inNdisOidlength = 8;
-	prNdisReq->outNdisOidLength = 8;
-
-	status = priv_get_ndis(prNetDev, prNdisReq, &u4BufLen);
-	if (status == 0) {
-		/* printk("Result=0x%x\n", *(PUINT_32)&prNdisReq->ndisOidContent[4]); */
-		*pLastRxRate = *(PUINT_32) &prNdisReq->ndisOidContent[4];
-	}
-	return status;
-}
 /*----------------------------------------------------------------------------*/
 /*!
 * \brief Private ioctl set int handler.
@@ -1809,9 +1781,10 @@ priv_get_struct(IN struct net_device *prNetDev,
 		kalMemZero(arBssid, MAC_ADDR_LEN);
 		kalMemZero(&rQueryStaStatistics, sizeof(rQueryStaStatistics));
 
-		if (wlanQueryInformation(prGlueInfo->prAdapter, wlanoidQueryBssid,
-					 &arBssid[0], sizeof(arBssid),
-					 &u4BufLen) == WLAN_STATUS_SUCCESS) {
+		if (kalIoctl(prGlueInfo, wlanoidQueryBssid,
+			     &arBssid[0], sizeof(arBssid),
+			     TRUE, TRUE, TRUE,
+			     &u4BufLen) == WLAN_STATUS_SUCCESS) {
 
 			COPY_MAC_ADDR(rQueryStaStatistics.aucMacAddr, arBssid);
 			rQueryStaStatistics.ucReadClear = TRUE;
@@ -1827,7 +1800,7 @@ priv_get_struct(IN struct net_device *prNetDev,
 			     TRUE, TRUE, TRUE,
 			     &u4BufLen) == WLAN_STATUS_SUCCESS) {
 
-			if (pSwDbgCtrl) {
+			if (pSwDbgCtrl && prRxCtrl) {
 				if (pSwDbgCtrl->u4Data == SWCR_DBG_TYPE_ALL) {
 					n = sprintf(&p_buffer[pos],
 						    "Tx success = %d\n",
@@ -1894,15 +1867,18 @@ priv_get_struct(IN struct net_device *prNetDev,
 						sizeof(u4Rate), TRUE, TRUE, TRUE, &u4BufLen);
 
 		/* STA stats */
-		if (wlanQueryInformation(prGlueInfo->prAdapter, wlanoidQueryBssid,
-					 &arBssid[0], sizeof(arBssid),
-					 &u4BufLen) == WLAN_STATUS_SUCCESS) {
+		if (kalIoctl(prGlueInfo, wlanoidQueryBssid,
+			     &arBssid[0], sizeof(arBssid),
+			     TRUE, TRUE, TRUE,
+			     &u4BufLen) == WLAN_STATUS_SUCCESS) {
 
 			prBssInfo =
 				&(prGlueInfo->prAdapter->rWifiVar.arBssInfoPool[KAL_NETWORK_TYPE_AIS_INDEX]);
 
-			wlanQueryInformation(prGlueInfo->prAdapter, wlanoidQuerySsid,
-				&ssid, sizeof(ssid), &u4BufLen);
+			kalIoctl(prGlueInfo, wlanoidQuerySsid,
+				 &ssid, sizeof(ssid),
+				 TRUE, TRUE, TRUE,
+				 &u4BufLen);
 
 			n = sprintf(&p_buffer[pos], "\n[STA] connected AP MAC Address = ");
 			pos += n;
@@ -1958,12 +1934,9 @@ priv_get_struct(IN struct net_device *prNetDev,
 			n = sprintf(&p_buffer[pos], "Last TX Rate = %d\n", u4Rate*100);
 			pos += n;
 
-			if (getLastRxRate(prNetDev, &u4Rate) == 0) {
-
-				/* n = sprintf(&p_buffer[pos], "Last RX Rate = %d\n",
-					((u4Rate>>24)&0xff)*1000000); */
+			if (prStaRec) {
 				n = sprintf(&p_buffer[pos], "Last RX Rate = %d\n",
-					prStaRec->u2LastPhyRate*100000);
+					prStaRec->u2LastPhyRate * 100000);
 			} else {
 				n = sprintf(&p_buffer[pos], "Last RX Rate =\n");
 			}
@@ -1991,13 +1964,18 @@ priv_get_struct(IN struct net_device *prNetDev,
 		int i, n;
 
 		kalMemZero(arBssid, MAC_ADDR_LEN);
-		rStatus = wlanQueryInformation(prGlueInfo->prAdapter,
-			wlanoidQueryBssid, &arBssid[0], sizeof(arBssid), &u4BufLen);
+		rStatus = kalIoctl(prGlueInfo, wlanoidQueryBssid,
+				   &arBssid[0], sizeof(arBssid),
+				   TRUE, TRUE, TRUE,
+				   &u4BufLen);
 
 		kalMemZero(buffer, 128);
 		pc = &buffer[0];
 		if (rStatus == WLAN_STATUS_SUCCESS) {
-			wlanQueryInformation(prGlueInfo->prAdapter, wlanoidQuerySsid, &ssid, sizeof(ssid), &u4BufLen);
+			kalIoctl(prGlueInfo, wlanoidQuerySsid,
+				 &ssid, sizeof(ssid),
+				 TRUE, TRUE, TRUE,
+				 &u4BufLen);
 
 			n = sprintf(pc, "connStatus: Connected (AP: %s [", ssid.aucSsid);
 			pc += n;
