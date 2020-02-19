@@ -134,7 +134,7 @@ static u32 dpidle_condition_mask[NR_GRPS] = {
 };
 
 static u32 soidle_condition_mask[NR_GRPS] = {
-	0x6ff40ffc, /* PERI0 */
+	0x6ff4effc, /* PERI0 */
 	0x00000006, /* PERI1 */
 	0x00000080, /* INFRA */
 	0x757a7ffc, /* DISP0 */

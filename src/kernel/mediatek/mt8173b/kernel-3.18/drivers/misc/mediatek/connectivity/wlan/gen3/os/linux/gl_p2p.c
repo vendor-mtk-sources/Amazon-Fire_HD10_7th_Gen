@@ -2916,6 +2916,10 @@ void mtk_p2p_wext_set_key_prkit(void)
 
 	/* BSSID */
 	memcpy(prKey->arBSSID, prIWEncExt->addr.sa_data, 6);
+	if (prIWEncExt->key_len >= 32) {
+		ret = -EINVAL;
+		break;
+	}
 	memcpy(prKey->aucKeyMaterial, prIWEncExt->key, prIWEncExt->key_len);
 
 	prKey->u4KeyLength = prIWEncExt->key_len;

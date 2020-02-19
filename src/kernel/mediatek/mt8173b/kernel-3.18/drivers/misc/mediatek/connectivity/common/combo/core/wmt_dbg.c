@@ -814,9 +814,10 @@ INT32 wmt_dbg_ut_test(INT32 par1, INT32 par2, INT32 par3)
 #if USE_NEW_PROC_FS_FLAG
 ssize_t wmt_dbg_write(struct file *filp, const char __user *buffer, size_t count, loff_t *f_pos)
 {
+	unsigned long len = count;
+#if defined(CONFIG_MTK_ENG_BUILD) || defined(CONFIG_MT_ENG_BUILD)
 	INT8 buf[256];
 	PINT8 pBuf;
-	unsigned long len = count;
 	INT32 x = 0, y = 0, z = 0;
 	PINT8 pToken = NULL;
 	PINT8 pDelimiter = " \t";
@@ -869,6 +870,7 @@ ssize_t wmt_dbg_write(struct file *filp, const char __user *buffer, size_t count
 		(*wmt_dev_dbg_func[x]) (x, y, z);
 	else
 		WMT_WARN_FUNC("no handler defined for command id(0x%08x)\n\r", x);
+#endif
 
 	return len;
 }

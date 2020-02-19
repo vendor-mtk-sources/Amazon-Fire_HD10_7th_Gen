@@ -39,6 +39,15 @@
 #include <linux/of_device.h>
 #include <linux/of_gpio.h>
 #include <linux/of_irq.h>
+#ifdef CONFIG_AMAZON_METRICS_LOG
+#include <linux/metricslog.h>
+#include <linux/power_supply.h>
+#endif
+
+#ifdef CONFIG_FB
+#include <linux/notifier.h>
+#include <linux/fb.h>
+#endif
 
 #ifdef FTS_CHARGER_DETECT
 #include <mach/upmu_sw.h>
@@ -103,6 +112,7 @@ static int tpd_detect(struct i2c_client *client, struct i2c_board_info *info);
 static int tpd_focal_remove(struct i2c_client *client);
 static void tpd_focal_shutdown(struct i2c_client *client);
 static int touch_event_handler(void *unused);
+static int tpd_register_powermanger(void);
 
 struct i2c_client *i2c_client = NULL;
 struct task_struct *thread = NULL;
@@ -119,6 +129,10 @@ int current_touchs;
 unsigned char hw_rev;
 unsigned char ft_vendor_id = 0;
 unsigned char ft_routing_type = 0;
+
+#if   defined(CONFIG_FB)
+	static int screen_on = 1;
+#endif
 
 /************************************************************************
 * Name: ftxxxx_i2c_Read
@@ -307,6 +321,34 @@ static void tpd_wakeup_handler(void)
 }
 #endif
 
+#ifdef CONFIG_AMAZON_METRICS_LOG
+int charger_exist(void)
+{
+	int ret;
+	struct power_supply *psy;
+	union power_supply_propval online_usb, online_ac;
+
+	psy = power_supply_get_by_name("usb");
+	if (!psy)
+		return -ENODEV;
+	ret = psy->get_property(psy, POWER_SUPPLY_PROP_ONLINE, &online_usb);
+	if (ret)
+		return -ENOENT;
+
+	psy = power_supply_get_by_name("ac");
+	if (!psy)
+		return -ENODEV;
+	ret = psy->get_property(psy, POWER_SUPPLY_PROP_ONLINE, &online_ac);
+	if (ret)
+		return -ENOENT;
+
+	if (online_usb.intval || online_ac.intval)
+		return 1;
+	else
+		return 0;
+}
+#endif
+
 /***********************************************************************
 * Name: fts_report_value
 * Brief: report the point information
@@ -322,6 +364,35 @@ static int fts_report_value(struct ts_event *data)
 	struct fts_packet_info buf;
 	struct fts_touch_info *touch;
 	int i, x, y;
+#ifdef CONFIG_AMAZON_METRICS_LOG
+	char buffer[64];
+	int charger_flag = 0;
+#endif
+
+#ifdef CONFIG_TOUCHSCREEN_GESTURE_WAKEUP
+	if (focal_suspend_flag && (gesture_wakeup_enabled == 1)) {
+		tpd_wakeup_handler();
+		focal_suspend_flag = false;
+#ifdef CONFIG_AMAZON_METRICS_LOG
+		charger_flag = charger_exist();
+		if (charger_flag >= 0) {
+			snprintf(buffer, sizeof(buffer),
+				"%s:touchwakup:%s_charger_wakeup=1;CT;1:NR",
+				__func__, (charger_flag ? "with" : "without"));
+			log_to_metrics(ANDROID_LOG_INFO, "TouchWakeup", buffer);
+		} else
+			pr_err("[focal] %s charger_exist error: %d\n",
+				__func__, charger_flag);
+#endif
+	}
+#endif
+
+#if   defined(CONFIG_FB)
+	if (!focal_suspend_flag && (screen_on == 0)) {
+		pr_err("[focal] %s touch resume ongoing, ignore.\n", __func__);
+		return -1;
+	}
+#endif
 
 	mutex_lock(&i2c_access);
 	ret = ftxxxx_i2c_Read(i2c_client, &addr, 1, (char *)&buf,
@@ -380,13 +451,6 @@ static int fts_report_value(struct ts_event *data)
 		input_report_key(tpd->dev, BTN_TOUCH, 1);
 	else
 		input_report_key(tpd->dev, BTN_TOUCH, 0);
-
-#ifdef CONFIG_TOUCHSCREEN_GESTURE_WAKEUP
-	if ((focal_suspend_flag == true) && (gesture_wakeup_enabled == 1)) {
-		tpd_wakeup_handler();
-		focal_suspend_flag = false;
-	}
-#endif
 
 	input_sync(tpd->dev);
 	return 0;
@@ -557,7 +621,7 @@ static void tpd_power_on(void)
 }
 
 #ifdef CONFIG_TOUCHSCREEN_GESTURE_WAKEUP
-static void gesture_wakeup_enable(void)
+static void any_touch_wakeup_enable(void)
 {
 	int retval = 0;
 
@@ -566,10 +630,8 @@ static void gesture_wakeup_enable(void)
 		if (retval)
 			pr_err("%s: irq_set_irq_wake err = %d\n", __func__, retval);
 		enable_irq(touch_irq);
-
 		mutex_lock(&i2c_access);
-		fts_write_reg(i2c_client, 0xD0, 0x01);
-		fts_write_reg(i2c_client, 0xD1, 0x10);
+		fts_write_reg(i2c_client, 0xa5, 0x01);
 		mutex_unlock(&i2c_access);
 	} else {
 #ifdef FTS_POWER_DOWN_IN_SUSPEND
@@ -902,6 +964,7 @@ static int tpd_focal_probe(struct i2c_client *client,
 	pr_debug("[focal] Touch driver probe %s\n",
 	       (retval < 0) ? "FAIL" : "PASS");
 
+	tpd_register_powermanger();
 	focal_suspend_flag = false;
 	tpd_load_status = 1;
 	return 0;
@@ -1061,6 +1124,43 @@ static int tpd_focal_remove(struct i2c_client *client)
 	pr_debug("[focal] TPD removed\n");
 	return 0;
 }
+
+#if   defined(CONFIG_FB)
+/* frame buffer notifier block */
+static int tpd_fb_notifier_callback(struct notifier_block *noti, unsigned long event, void *data)
+{
+	struct fb_event *ev_data = data;
+	int *blank;
+
+	if (ev_data && ev_data->data && event == FB_EVENT_BLANK) {
+		blank = ev_data->data;
+		if (*blank == FB_BLANK_UNBLANK) {
+			pr_debug("Resume by fb notifier.\n");
+			screen_on = 1;
+
+		}
+		else if (*blank == FB_BLANK_POWERDOWN) {
+			pr_debug("Suspend by fb notifier.\n");
+			screen_on = 0;
+		}
+	}
+
+	return 0;
+}
+
+static struct notifier_block tpd_fb_notifier = {
+        .notifier_call = tpd_fb_notifier_callback,
+};
+#endif
+
+static int tpd_register_powermanger()
+{
+#if   defined(CONFIG_FB)
+	fb_register_client(&tpd_fb_notifier);
+#endif
+	return 0;
+}
+
 
 #ifdef FTS_CHARGER_DETECT
 static void fts_charger_check_func(struct work_struct *work)
@@ -1416,11 +1516,11 @@ static void tpd_suspend(struct device *h)
 #ifndef CONFIG_TOUCHSCREEN_GESTURE_WAKEUP
 	tpd_power_down();
 #else
-	gesture_wakeup_enable();
+	any_touch_wakeup_enable();
 #endif
 #else
 #ifdef CONFIG_TOUCHSCREEN_GESTURE_WAKEUP
-	gesture_wakeup_enable();
+	any_touch_wakeup_enable();
 #else
 	/* write i2c command to make IC into deepsleep */
 	mutex_lock(&i2c_access);

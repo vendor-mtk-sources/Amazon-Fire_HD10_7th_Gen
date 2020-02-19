@@ -101,7 +101,7 @@ static int tmp103_thermal_get_temp(struct thermal_zone_device *thermal,
 			and 4 mins wheny throttling */
 		if (!(count & mask)) {
 			snprintf(buf, TMP103_METRICS_STR_LEN,
-				"%s:pcbmonitor=%d;CT;1,%s_temp=%lu;CT;1:NR",
+				"%s:pcbmonitor=%d;CT;1,%s_temp=%lu;CT;1:NA",
 				PREFIX, i++, tdev->name, temp);
 			log_to_metrics(ANDROID_LOG_INFO, "ThermalEvent", buf);
 		}

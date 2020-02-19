@@ -24,6 +24,7 @@
 #include <linux/irq.h>
 #include <linux/switch.h>
 #include <linux/module.h>
+#include <linux/power_supply.h>
 
 #ifdef CONFIG_SSUSB_PROJECT_PHY
 #include <mu3phy/mtk-phy-asic.h>
@@ -42,6 +43,7 @@
 #define USB3_PORT 3
 
 #define OTG_IDDIG_DEBOUNCE 500
+#define DOCK_IDDIG_DEBOUNCE 100
 
 #define U3_UX_EXIT_LFPS_TIMING_PAR	0xa0
 #define U3_REF_CK_PAR	0xb0
@@ -58,9 +60,15 @@
 #define LINK_PM_TIMER	0x8
 #define MTK_PM_LC_TIMEOUT_VALUE	3
 
+enum dock_state {
+	DOCK_NOT_PRESENT = 0,
+	DOCK_PRESENT = 1,
+	DOCK_UNPOWERED = 2,
+};
 
 static struct xhci_hcd *mtk_xhci;
 static struct switch_dev *g_otg_state;
+static DEFINE_MUTEX(dock_detection_mutex);
 
 #ifndef CONFIG_MTK_SMART_BATTERY
 void bat_charger_boost_enable(bool arg)
@@ -535,6 +543,171 @@ void mtk_xhci_halt(struct ssusb_mtk *ssusb)
 		mu3d_dbg(K_ERR, "%s xhci is NULL\n", __func__);
 }
 
+static struct power_supply *ssusb_get_bat_psy(struct ssusb_mtk *ssusb)
+{
+	if (ssusb->batt_psy)
+		return ssusb->batt_psy;
+
+	ssusb->batt_psy = power_supply_get_by_name("battery");
+	if (!ssusb->batt_psy) {
+		mu3d_dbg(K_ERR, "%s: can't find battery psy\n", __func__);
+		return NULL;
+	}
+
+	return ssusb->batt_psy;
+}
+
+static int ssusb_set_dock_present(struct ssusb_mtk *ssusb, bool en)
+{
+	union power_supply_propval val;
+	int ret = 0;
+
+	if (!ssusb_get_bat_psy(ssusb))
+		return -1;
+
+	val.intval = en ? 1 : 0;
+	ret = ssusb->batt_psy->set_property(ssusb->batt_psy,
+				POWER_SUPPLY_PROP_DOCK_PRESENT, &val);
+	if (ret) {
+		mu3d_dbg(K_ERR, "%s: set_property fail\n", __func__);
+		return ret;
+	}
+
+	return ret;
+}
+
+#define VALID_VBUS_MV 4300
+static int ssusb_dock_detection(void)
+{
+	int type = 0, vbus_mv = 0;
+
+	/*
+	 * This waiting is just for initialization phase.
+	 * Because BC1.2 detection only can be invoked after usb moudle ready,
+	 * otherwise result of detection is unstable.
+	 */
+	while (!bat_check_usb_ready()) {
+		mu3d_dbg(K_WARNIN, "%s: wait usb ready\n", __func__);
+		msleep(100);
+	}
+
+	type = bat_read_charger_type();
+	mu3d_dbg(K_WARNIN, "%s: charger type: %d\n", __func__, type);
+	if (type != STANDARD_CHARGER)
+		return DOCK_NOT_PRESENT;
+
+	vbus_mv = battery_meter_get_charger_voltage();
+	mu3d_dbg(K_WARNIN, "%s: vbus_mv: %d\n", __func__, vbus_mv);
+	if (vbus_mv < VALID_VBUS_MV)
+		return DOCK_UNPOWERED;
+
+	return DOCK_PRESENT;
+}
+
+void ssusb_rerun_dock_detection(void)
+{
+	struct otg_switch_mtk *otg_switch =
+		container_of(g_otg_state, struct otg_switch_mtk, otg_state);
+	struct ssusb_mtk *ssusb = otg_switch_to_ssusb(otg_switch);
+	int vbus_mv = 0;
+	bool is_present = false;
+
+	if (!ssusb->pdata->is_amazon_dock_supported)
+		return;
+
+	mutex_lock(&dock_detection_mutex);
+	vbus_mv = battery_meter_get_charger_voltage();
+	is_present = bat_is_charger_exist();
+	mu3d_dbg(K_WARNIN, "%s: state: %d vbus_mv: %d is_present: %d\n",
+				__func__, otg_switch->dock_state,
+				vbus_mv, is_present);
+	switch (otg_switch->dock_state) {
+	case DOCK_UNPOWERED:
+		if (vbus_mv > VALID_VBUS_MV || is_present) {
+			otg_switch->dock_state = DOCK_PRESENT;
+			mu3d_dbg(K_WARNIN,
+				"%s: Dock detected: Unpowered -> Powered\n",
+				__func__);
+			ssusb_set_dock_present(ssusb, true);
+		}
+		break;
+	case DOCK_PRESENT:
+		if (vbus_mv < VALID_VBUS_MV || !is_present) {
+			otg_switch->dock_state = DOCK_UNPOWERED;
+			mu3d_dbg(K_WARNIN,
+				"%s: Dock removed: Powered -> Unpowered\n",
+				__func__);
+			ssusb_set_dock_present(ssusb, false);
+		}
+		break;
+	default:
+		break;
+	}
+	mutex_unlock(&dock_detection_mutex);
+}
+
+bool ssusb_dock_handler(struct ssusb_mtk *ssusb, int id_state)
+{
+	struct otg_switch_mtk *otg_switch = &ssusb->otg_switch;
+	bool is_dock_mode = false;
+
+	if (!ssusb->pdata->is_amazon_dock_supported)
+		return false;
+
+	mutex_lock(&dock_detection_mutex);
+	if (id_state == IDPIN_IN) {
+		otg_switch->dock_state = ssusb_dock_detection();
+		switch (otg_switch->dock_state) {
+		case DOCK_PRESENT:
+			mu3d_dbg(K_WARNIN, "%s: Dock detected\n", __func__);
+			ssusb_set_dock_present(ssusb, true);
+			is_dock_mode = true;
+			break;
+		case DOCK_UNPOWERED:
+			mu3d_dbg(K_WARNIN, "%s: Unpowered Dock detected\n",
+					__func__);
+			is_dock_mode = true;
+			break;
+		default:
+			break;
+		}
+
+		if (is_dock_mode) {
+			/* expect next isr is for id-pin out action */
+			otg_switch->next_idpin_state = IDPIN_OUT;
+			/* make id pin to detect the plug-out */
+			set_iddig_out_detect(otg_switch);
+		}
+	} else {
+		switch (otg_switch->dock_state) {
+		case DOCK_PRESENT:
+			mu3d_dbg(K_WARNIN, "%s: Dock removed\n", __func__);
+			otg_switch->dock_state = DOCK_NOT_PRESENT;
+			is_dock_mode = true;
+			ssusb_set_dock_present(ssusb, false);
+			break;
+		case DOCK_UNPOWERED:
+			is_dock_mode = true;
+			otg_switch->dock_state = DOCK_NOT_PRESENT;
+			mu3d_dbg(K_WARNIN, "%s: Unpowered Dock removed\n",
+					__func__);
+			break;
+		default:
+			break;
+		}
+
+		if (is_dock_mode) {
+			/* expect next isr is for id-pin in action */
+			otg_switch->next_idpin_state = IDPIN_IN;
+			/* make id pin to detect the plug-in */
+			set_iddig_in_detect(otg_switch);
+		}
+	}
+	mutex_unlock(&dock_detection_mutex);
+
+	return is_dock_mode;
+}
+
 static void ssusb_mode_switch_lowpw(struct work_struct *work)
 {
 	struct delayed_work *dwork = to_delayed_work(work);
@@ -544,13 +717,17 @@ static void ssusb_mode_switch_lowpw(struct work_struct *work)
 
 	bool cur_id_state = otg_switch->next_idpin_state;
 
+	if (ssusb_dock_handler(ssusb, cur_id_state)) {
+		enable_irq(otg_switch->iddig_eint_num);
+		return;
+	}
+
 	if (cur_id_state == IDPIN_IN) {
 		mu3d_dbg(K_DEBUG, "%s to host\n", __func__);
 		mtk_host_wakelock_lock(&otg_switch->xhci_wakelock);
 		ssusb_power_restore(ssusb);
 		mtk_xhci_ip_init(ssusb);
 		ssusb_host_init(ssusb);
-
 		switch_set_state(&otg_switch->otg_state, 1);
 		ssusb_set_vbus(&otg_switch->p0_vbus, 1);
 
@@ -618,10 +795,15 @@ static void ssusb_mode_switch_idpin(struct work_struct *work)
 static irqreturn_t iddig_eint_isr(int irq, void *otg_sx)
 {
 	struct otg_switch_mtk *otg_switch = (struct otg_switch_mtk *)otg_sx;
+	struct ssusb_mtk *ssusb = otg_switch_to_ssusb(otg_switch);
+	int interval_ms;
 
-	mu3d_dbg(K_INFO, "%s : schedule to delayed work\n", __func__);
+	mu3d_dbg(K_WARNIN, "%s : schedule to delayed work\n", __func__);
 	disable_irq_nosync(otg_switch->iddig_eint_num);
-	schedule_delayed_work(&otg_switch->switch_dwork, OTG_IDDIG_DEBOUNCE * HZ / 1000);
+	interval_ms = ssusb->pdata->is_amazon_dock_supported ?
+				DOCK_IDDIG_DEBOUNCE : OTG_IDDIG_DEBOUNCE;
+	schedule_delayed_work(&otg_switch->switch_dwork,
+					interval_ms * HZ / 1000);
 	return IRQ_HANDLED;
 }
 
@@ -722,7 +904,6 @@ static void iddig_eint_register_work(struct work_struct *work)
 	mu3d_dbg(K_INFO, "%s\n", __func__);
 	ssusb_iddig_eint_init(otg_switch);
 }
-
 
 int mtk_otg_switch_init(struct ssusb_mtk *ssusb)
 {

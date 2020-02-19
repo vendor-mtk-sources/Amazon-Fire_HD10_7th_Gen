@@ -98,6 +98,9 @@ struct musb_hdrc_platform_data {
 
 	/* Platform specific struct musb_ops pointer */
 	const void *platform_ops;
+
+	/* Amazon Dock */
+	bool is_amazon_dock_supported;
 };
 
 

@@ -1125,6 +1125,9 @@ static struct musb_hdrc_platform_data *mu3d_parse_dts(struct device_node *dn)
 		goto prp_err;
 	}
 
+	pdata->is_amazon_dock_supported =
+			of_property_read_bool(dn, "amazon-dock-supported");
+
 	/* to get more configs for HOST or DRD mode */
 	ret = of_property_read_u32(dn, "p0-vbus-mode", &pdata->p0_vbus_mode);
 	if (ret) {

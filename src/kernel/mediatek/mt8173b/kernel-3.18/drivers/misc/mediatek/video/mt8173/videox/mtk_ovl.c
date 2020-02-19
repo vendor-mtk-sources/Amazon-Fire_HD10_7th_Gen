@@ -68,8 +68,13 @@ typedef struct {
 } ovl2mem_path_context;
 
 atomic_t g_trigger_ticket = ATOMIC_INIT(1);
-atomic_t g_release_ticket = ATOMIC_INIT(1);
-static struct wake_lock ovl2mem_lock;
+atomic_t g_release_ticket = ATOMIC_INIT(0);
+
+typedef enum {
+	OVL2MEM_INIT = 0,
+	OVL2MEM_ALIVE = 1,
+	OVL2MEM_SLEEP = 2
+} OVL2MEM_STATE;
 
 #define pgc	_get_context()
 
@@ -228,20 +233,6 @@ static int ovl2mem_callback(unsigned int userdata)
 			else
 				;
 		} else {
-			disp_ddp_path_config *data_config =
-			    dpmgr_path_get_last_config(pgc->dpmgr_handle);
-			if (data_config && (layid == 4)) {
-				WDMA_CONFIG_STRUCT wdma_layer;
-
-				wdma_layer.dstAddress =
-				    mtkfb_query_buf_mva(pgc->session, layid, fence_idx);
-				wdma_layer.outputFormat = data_config->wdma_config.outputFormat;
-				wdma_layer.srcWidth = data_config->wdma_config.srcWidth;
-				wdma_layer.srcHeight = data_config->wdma_config.srcHeight;
-				wdma_layer.dstPitch = data_config->wdma_config.dstPitch;
-
-				dprec_mmp_dump_wdma_layer(&wdma_layer, 1);
-			}
 			mtkfb_release_fence(pgc->session, layid, fence_idx);
 		}
 	}
@@ -257,14 +248,6 @@ int get_ovl2mem_ticket(void)
 
 }
 
-int ovl2mem_is_alive(void)
-{
-	if (pgc->state > 0)
-		return 1;
-	else
-		return 0;
-}
-
 int ovl2mem_init(unsigned int session)
 {
 	int ret = -1;
@@ -272,12 +255,14 @@ int ovl2mem_init(unsigned int session)
 	DISPFUNC();
 
 	dpmgr_init();
-	mutex_init(&(pgc->lock));
+	/*mutex_init(&(pgc->lock));*/
 
 	_ovl2mem_path_lock(__func__);
 
-	if (pgc->state > 0)
+	if (pgc->state > OVL2MEM_INIT) {
+		DISPMSG("ovl2mem_init exit state=%d\n", pgc->state);
 		goto Exit;
+	}
 #if 0
 	ret =
 	    cmdqCoreRegisterCB(CMDQ_GROUP_DISP, cmdqDdpClockOn, cmdqDdpDumpInfo, cmdqDdpResetEng,
@@ -315,12 +300,10 @@ int ovl2mem_init(unsigned int session)
 	dpmgr_enable_event(pgc->dpmgr_handle, DISP_PATH_EVENT_FRAME_COMPLETE);
 
 	pgc->max_layer = 4;
-	pgc->state = 1;
+	pgc->state = OVL2MEM_ALIVE;
 	pgc->session = session;
 	atomic_set(&g_trigger_ticket, 1);
-	atomic_set(&g_release_ticket, 1);
-	wake_lock_init(&ovl2mem_lock, WAKE_LOCK_SUSPEND, "ovl2mem wakelock");
-	wake_lock(&ovl2mem_lock);
+	atomic_set(&g_release_ticket, 0);
 
 Exit:
 	_ovl2mem_path_unlock(__func__);
@@ -347,8 +330,8 @@ int ovl2mem_input_config(ovl2mem_in_config *input)
 	data_config->ovl_dirty = 0;
 	data_config->rdma_dirty = 0;
 
-	if (pgc->state == 0) {
-		DISPMSG("ovl2mem is already slept\n");
+	if (pgc->state != OVL2MEM_ALIVE) {
+		DISPMSG("(in)ovl2mem state=%d\n", pgc->state);
 		_ovl2mem_path_unlock(__func__);
 		return 0;
 	}
@@ -422,8 +405,8 @@ int ovl2mem_output_config(ovl2mem_out_config *out)
 	data_config->wdma_config.security = out->security;
 #endif
 
-	if (pgc->state == 0) {
-		DISPMSG("ovl2mem is already slept\n");
+	if (pgc->state != OVL2MEM_ALIVE) {
+		DISPMSG("(out)ovl2mem state=%d\n", pgc->state);
 		_ovl2mem_path_unlock(__func__);
 		return 0;
 	}
@@ -452,7 +435,7 @@ int ovl2mem_trigger(int blocking, void *callback, unsigned int userdata)
 	int layid = 0;
 
 	/*DISPFUNC(); */
-	if (pgc->need_trigger_path == 0) {
+	if ((pgc->need_trigger_path == 0) && (pgc->state == OVL2MEM_ALIVE)) {
 		DISPMSG("ovl2mem_trigger do not trigger\n");
 		if ((atomic_read(&g_trigger_ticket) - atomic_read(&g_release_ticket)) == 1) {
 			DISPMSG
@@ -469,6 +452,22 @@ int ovl2mem_trigger(int blocking, void *callback, unsigned int userdata)
 		return ret;
 	}
 	_ovl2mem_path_lock(__func__);
+
+	if (pgc->state != OVL2MEM_ALIVE) {
+		DISPMSG("(trigger)ovl2mem state=%d\n", pgc->state);
+		cmdqRecReset(pgc->cmdq_handle_config);
+		for (layid = 0; layid < (HW_OVERLAY_COUNT + 1); layid++) {
+			fence_idx =
+				mtkfb_query_idx_by_ticket(pgc->session, layid,
+							atomic_read(&g_trigger_ticket));
+			/*DISPMSG("(trigger)%d ovl2mem free fence_idx=%d\n",layid, fence_idx);*/
+			if (fence_idx >= 0)
+				mtkfb_release_fence(pgc->session, layid, fence_idx);
+		}
+		pgc->need_trigger_path = 0;
+		_ovl2mem_path_unlock(__func__);
+		return 0;
+	}
 
 	dpmgr_path_start(pgc->dpmgr_handle, ovl2mem_cmdq_enabled());
 	dpmgr_path_trigger(pgc->dpmgr_handle, pgc->cmdq_handle_config, ovl2mem_cmdq_enabled());
@@ -527,31 +526,90 @@ int ovl2mem_deinit(void)
 
 	_ovl2mem_path_lock(__func__);
 
-	if (pgc->state == 0)
+	if (pgc->state == OVL2MEM_INIT)
 		goto Exit;
 
 	ovl2mem_wait_done();
-
-	dpmgr_path_stop(pgc->dpmgr_handle, CMDQ_DISABLE);
-	dpmgr_path_reset(pgc->dpmgr_handle, CMDQ_DISABLE);
-	dpmgr_path_deinit(pgc->dpmgr_handle, CMDQ_DISABLE);
-	dpmgr_path_power_off(pgc->dpmgr_handle, CMDQ_DISABLE);
+	if (pgc->state == OVL2MEM_ALIVE) {
+		dpmgr_path_stop(pgc->dpmgr_handle, CMDQ_DISABLE);
+		dpmgr_path_reset(pgc->dpmgr_handle, CMDQ_DISABLE);
+		dpmgr_path_deinit(pgc->dpmgr_handle, CMDQ_DISABLE);
+		dpmgr_path_power_off(pgc->dpmgr_handle, CMDQ_DISABLE);
+	}
 	dpmgr_destroy_path(pgc->dpmgr_handle);
 
 	cmdqRecDestroy(pgc->cmdq_handle_config);
 
 	pgc->dpmgr_handle = NULL;
 	pgc->cmdq_handle_config = NULL;
-	pgc->state = 0;
+	pgc->state = OVL2MEM_INIT;
 	pgc->need_trigger_path = 0;
 	atomic_set(&g_trigger_ticket, 1);
-	atomic_set(&g_release_ticket, 1);
-	wake_unlock(&ovl2mem_lock);
-	wake_lock_destroy(&ovl2mem_lock);
+	atomic_set(&g_release_ticket, 0);
 
 Exit:
 	_ovl2mem_path_unlock(__func__);
 
-	DISPMSG("ovl2mem_deinit done\n");
+	DISPMSG("ovl2mem_deinit _done\n");
 	return ret;
 }
+
+int ovl2mem_is_alive(void)
+{
+	if (pgc->state == OVL2MEM_ALIVE)
+		return 1;
+	else
+		return 0;
+}
+
+int ovl2mem_suspend(void)
+{
+	DISPFUNC();
+
+	_ovl2mem_path_lock(__func__);
+
+	if (pgc->state != OVL2MEM_ALIVE)
+		goto Exit;
+
+	ovl2mem_wait_done();
+	dpmgr_path_stop(pgc->dpmgr_handle, CMDQ_DISABLE);
+	dpmgr_path_reset(pgc->dpmgr_handle, CMDQ_DISABLE);
+	dpmgr_path_deinit(pgc->dpmgr_handle, CMDQ_DISABLE);
+	dpmgr_path_power_off(pgc->dpmgr_handle, CMDQ_DISABLE);
+	pgc->state = OVL2MEM_SLEEP;
+
+Exit:
+	_ovl2mem_path_unlock(__func__);
+
+	DISPMSG("ovl2mem_suspend done\n");
+	return 0;
+}
+
+int ovl2mem_resume(void)
+{
+	DISPFUNC();
+
+	_ovl2mem_path_lock(__func__);
+
+	if (pgc->state != OVL2MEM_SLEEP)
+		goto Exit;
+
+	dpmgr_path_power_on(pgc->dpmgr_handle, CMDQ_DISABLE);
+	dpmgr_path_init(pgc->dpmgr_handle, CMDQ_DISABLE);
+	dpmgr_path_reset(pgc->dpmgr_handle, CMDQ_DISABLE);
+	pgc->state = OVL2MEM_ALIVE;
+
+Exit:
+	_ovl2mem_path_unlock(__func__);
+
+	DISPMSG("ovl2mem_resume done\n");
+	return 0;
+}
+
+static int __init ovl2mem_module_init(void)
+{
+    mutex_init(&(pgc->lock));
+    return 0;
+}
+
+module_init(ovl2mem_module_init);

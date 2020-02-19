@@ -390,6 +390,7 @@ struct otg_switch_mtk {
 	int is_init_as_host;
 	int iddig_eint_num;
 	int next_idpin_state;
+	int dock_state;
 	int vbus_gpio_num;
 	enum ssusb_vbus_mode vbus_mode;
 	int port0_u2;
@@ -451,6 +452,8 @@ struct ssusb_mtk {
 	void __iomem *perisys;
 	struct input_dev *vi_dev;
 	int wakeup_src;
+	/* Amazon Dock */
+	struct power_supply *batt_psy;
 };
 
 #define glue_to_musb(g)		platform_get_drvdata(g->mu3d)

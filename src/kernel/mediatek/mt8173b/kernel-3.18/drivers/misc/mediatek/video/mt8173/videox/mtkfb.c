@@ -2955,6 +2955,8 @@ static void mtkfb_blank_suspend(void)
 #endif
 	msleep(30);
 
+	ovl2mem_suspend();
+
 	ret = primary_display_suspend();
 	if (ret < 0) {
 		MTKFB_ERR("primary display suspend failed\n");
@@ -3019,6 +3021,7 @@ static void mtkfb_blank_resume(void)
 		return;
 	}
 
+	ovl2mem_resume();
 	MSG_FUNC_LEAVE();
 	MTKFB_MSG("leave late_resume\n");
 }

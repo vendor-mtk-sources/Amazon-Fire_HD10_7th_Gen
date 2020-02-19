@@ -36,6 +36,9 @@ void ssusb_host_exit(struct ssusb_mtk *ssusb);
 
 /* from charge driver */
 extern void tbl_charger_otg_vbus(int mode);
+extern signed int battery_meter_get_charger_voltage(void);
+extern bool bat_check_usb_ready(void);
+extern int bat_read_charger_type(void);
 
 /*
   mediatek probe out

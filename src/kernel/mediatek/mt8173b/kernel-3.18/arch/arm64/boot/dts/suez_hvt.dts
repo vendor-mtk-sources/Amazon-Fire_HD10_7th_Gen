@@ -1224,6 +1224,7 @@
 	is-u3-otg = <0>; /* device is usb3.0? */
 	wakeup-src = <0>; /* bit0: iddig, bit1: linestate-0p, bit2: linestate-1p */
 	p0-vbus-mode = <1>; /* 0: default on, 1: by charger ic, 2: gpio */
+	amazon-dock-supported;
 	otg-iddig {
 		interrupt-parent = <&pio>;
 		interrupts = <16 IRQ_TYPE_LEVEL_LOW>; /* init is low-level */
