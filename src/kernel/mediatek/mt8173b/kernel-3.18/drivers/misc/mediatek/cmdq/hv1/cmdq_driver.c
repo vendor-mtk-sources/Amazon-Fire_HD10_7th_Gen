@@ -498,10 +498,11 @@ static long cmdq_verify_command(struct cmdqCommandStruct *command)
 	 * each cmdq instruction is 64bit,
 	 * block size must be multiple of 8
 	 */
-	if (command->blockSize <= 0
+	if (command->blockSize < (2 * CMDQ_INST_SIZE)
 	   || (command->blockSize > CMDQ_MAX_COMMAND_SIZE)
 	   || (command->blockSize % 8 != 0)
 	   ) {
+		/* for userspace command: must ends with EOC+JMP. */
 		CMDQ_ERR_PRINT_LIMIT("Command block size invalid! size:%d\n",
 			command->blockSize);
 		return -EFAULT;
