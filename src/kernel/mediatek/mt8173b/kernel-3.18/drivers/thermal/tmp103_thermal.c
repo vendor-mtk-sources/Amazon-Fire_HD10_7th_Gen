@@ -81,7 +81,7 @@ static int tmp103_thermal_get_temp(struct thermal_zone_device *thermal,
 	char buf[TMP103_METRICS_STR_LEN];
 	static atomic_t query_count;
 	unsigned count;
-	static unsigned int mask = 0xDFF;
+	static unsigned int mask = 0x1FFF;
 	int i = 0;
 #endif
 
@@ -97,8 +97,8 @@ static int tmp103_thermal_get_temp(struct thermal_zone_device *thermal,
 		temp = tdev->dev_ops->get_temp(tdev);
 
 #ifdef CONFIG_AMAZON_METRICS_LOG
-		/* Log in metrics around every 1 hour normally
-			and 2 mins wheny throttling */
+		/* Log in metrics around every 2 hour normally
+			and 4 mins wheny throttling */
 		if (!(count & mask)) {
 			snprintf(buf, TMP103_METRICS_STR_LEN,
 				"%s:pcbmonitor=%d;CT;1,%s_temp=%lu;CT;1:NR",
@@ -122,8 +122,8 @@ static int tmp103_thermal_get_temp(struct thermal_zone_device *thermal,
 	}
 
 #ifdef CONFIG_AMAZON_METRICS_LOG
-	/* Log in metrics around every 1 hour normally
-		and 2 mins wheny throttling */
+	/* Log in metrics around every 2 hour normally
+		and 4 mins wheny throttling */
 	if (!(count & mask)) {
 		snprintf(buf, TMP103_METRICS_STR_LEN,
 			"%s:pcbmonitor=%d;CT;1,pcb_temp=%lu;CT;1:NR",
@@ -132,9 +132,9 @@ static int tmp103_thermal_get_temp(struct thermal_zone_device *thermal,
 	}
 
 	if (tempv > pdata->trips[0].temp)
-		mask = 0x3F;
+		mask = 0xFF;
 	else
-		mask = 0xDFF;
+		mask = 0x1FFF;
 #endif
 
 	*t = (unsigned long) tempv;
@@ -250,6 +250,28 @@ static int tmp103_thermal_set_trip_hyst(struct thermal_zone_device *thermal,
 	pdata->trips[trip].hyst = hyst;
 	return 0;
 }
+
+void last_kmsg_thermal_shutdown(void)
+{
+	int rc;
+	char *argv[] = {
+		"/sbin/crashreport",
+		"thermal_shutdown",
+		NULL
+	};
+
+	pr_err("%s: start to save last kmsg\n", __func__);
+	//UMH_WAIT_PROC UMH_WAIT_EXEC
+	rc = call_usermodehelper(argv[0], argv, NULL, UMH_WAIT_EXEC);
+	pr_err("%s: save last kmsg finish\n", __func__);
+
+	if (rc < 0)
+		pr_err("call /sbin/crashreport failed, rc = %d\n", rc);
+
+	msleep(6000); /* 6000ms */
+}
+EXPORT_SYMBOL_GPL(last_kmsg_thermal_shutdown);
+
 static int tmp103_thermal_notify(struct thermal_zone_device *thermal,
 				 int trip,
 				 enum thermal_trip_type type)
@@ -258,6 +280,10 @@ static int tmp103_thermal_notify(struct thermal_zone_device *thermal,
 	char *envp[] = { data, NULL};
 	snprintf(data, sizeof(data), "%s", "SHUTDOWN_WARNING");
 	kobject_uevent_env(&thermal->device.kobj, KOBJ_CHANGE, envp);
+
+	pr_err("%s: thermal_shutdown notify\n", __func__);
+	last_kmsg_thermal_shutdown();
+	pr_err("%s: thermal_shutdown notify end\n", __func__);
 
 #ifdef CONFIG_AMAZON_SIGN_OF_LIFE
 	if (type == THERMAL_TRIP_CRITICAL)

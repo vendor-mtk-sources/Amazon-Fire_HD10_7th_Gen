@@ -644,6 +644,39 @@ RGXFWIF_CONTEXT_RESET_REASON FWCommonContextGetLastResetReason(RGX_SERVER_COMMON
 	return eLastResetReason;
 }
 
+IMG_BOOL RGXCheckKCCBsAreEmpty(PVRSRV_RGXDEV_INFO *psDevInfo)
+{
+	IMG_UINT32 ui32DMCount;
+	IMG_BOOL bKCCBCmdsWaiting = IMG_FALSE;
+
+	for (ui32DMCount = 0; ui32DMCount < RGXFWIF_DM_MAX; ui32DMCount++)
+	{
+		RGXFWIF_CCB_CTL *psKCCBCtl = psDevInfo->apsKernelCCBCtl[ui32DMCount];
+
+		if (psKCCBCtl != IMG_NULL)
+		{
+			if (psKCCBCtl->ui32ReadOffset > psKCCBCtl->ui32WrapMask  ||
+				psKCCBCtl->ui32WriteOffset > psKCCBCtl->ui32WrapMask)
+			{
+				PVR_DPF((PVR_DBG_ERROR, "RGXGetDeviceHealthStatus: KCCB for DM%d has invalid offset (ROFF=%d WOFF=%d)",
+								ui32DMCount, psKCCBCtl->ui32ReadOffset, psKCCBCtl->ui32WriteOffset));
+			}
+
+			if (psKCCBCtl->ui32ReadOffset != psKCCBCtl->ui32WriteOffset)
+			{
+				PVR_DPF((PVR_DBG_ERROR, "%s: kCCB %u has commands pending (r:%X w:%X)",
+										__func__,
+										ui32DMCount,
+										psKCCBCtl->ui32ReadOffset,
+										psKCCBCtl->ui32WriteOffset));
+				bKCCBCmdsWaiting = IMG_TRUE;
+			}
+		}
+	}
+
+	return !bKCCBCmdsWaiting;
+}
+
 /*!
 *******************************************************************************
  @Function		RGXFreeKernelCCB

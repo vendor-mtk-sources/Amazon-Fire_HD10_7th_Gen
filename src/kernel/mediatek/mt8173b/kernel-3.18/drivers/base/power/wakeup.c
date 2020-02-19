@@ -18,19 +18,6 @@
 #include <trace/events/power.h>
 
 #include "power.h"
-#if defined(CONFIG_AMAZON_METRICS_LOG)
-#include <linux/metricslog.h>
-#endif
-
-#ifdef CONFIG_AMAZON_METRICS_LOG
-static struct work_struct metrics_work_offmode;
-static char metrics_buf_offmode[128];
-static void wokeup_metrics_offmode(struct work_struct *work)
-{
-	/* Log suspend state failure or success */
-	log_to_metrics(ANDROID_LOG_INFO, "kernel", metrics_buf_offmode);
-}
-#endif
 
 /*
  * If set, the suspend/hibernate code will abort transitions to a sleep state
@@ -491,14 +478,6 @@ static void update_prevent_sleep_time(struct wakeup_source *ws, ktime_t now)
 {
 	ktime_t delta = ktime_sub(now, ws->start_prevent_time);
 	ws->prevent_sleep_time = ktime_add(ws->prevent_sleep_time, delta);
-#if defined(CONFIG_AMAZON_METRICS_LOG)
-	if (ktime_to_ms(delta) != 0) {
-		snprintf(metrics_buf_offmode, sizeof(metrics_buf_offmode),
-			 "system_suspend:def:preventsusp=1;CT;1,name=%s;DV;1,for_ms=%lld;CT;1:NR",
-			 ws->name, ktime_to_ms(delta));
-		schedule_work(&metrics_work_offmode);
-	}
-#endif
 }
 #else
 static inline void update_prevent_sleep_time(struct wakeup_source *ws,
@@ -970,10 +949,6 @@ static int __init wakeup_sources_debugfs_init(void)
 {
 	wakeup_sources_stats_dentry = debugfs_create_file("wakeup_sources",
 			S_IRUGO, NULL, NULL, &wakeup_sources_stats_fops);
-
-#if defined(CONFIG_AMAZON_METRICS_LOG)
-	INIT_WORK(&metrics_work_offmode, wokeup_metrics_offmode);
-#endif
 
 	return 0;
 }

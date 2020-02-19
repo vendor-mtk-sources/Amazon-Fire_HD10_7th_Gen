@@ -71,6 +71,11 @@ extern int apk_debug_flag;
 extern struct tpd_device *tpd;
 extern unsigned char ft_vendor_id;
 extern unsigned char ft_routing_type;
+#ifdef CONFIG_TOUCHSCREEN_GESTURE_WAKEUP
+extern void kpd_tpd_wakeup_handler(unsigned long pressed);
+extern int gesture_wakeup_enabled;
+extern struct mutex fts_gesture_wakeup_mutex;
+#endif
 int hid_to_i2c(struct i2c_client *client);
 int fts_ctpm_auto_upgrade(struct i2c_client *client);
 int fts_create_sysfs(struct i2c_client *client);

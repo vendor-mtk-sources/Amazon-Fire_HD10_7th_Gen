@@ -1688,6 +1688,7 @@ struct _ADAPTER_T {
 	WAKEUP_STATISTIC arWakeupStatistic[WAKEUP_TYPE_NUM];
 	int wake_event_count[EVENT_ID_END];
 #endif
+	unsigned char dtim_skip_count;
 
 };				/* end of _ADAPTER_T */
 

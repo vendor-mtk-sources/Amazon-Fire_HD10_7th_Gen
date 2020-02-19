@@ -1218,14 +1218,14 @@ VOID nicSDIOReadIntStatus(IN P_ADAPTER_T prAdapter, OUT PUINT_32 pu4IntStatus)
 	prSDIOCtrl = prAdapter->prSDIOCtrl;
 	ASSERT(prSDIOCtrl);
 
-	HAL_PORT_RD(prAdapter,
-		    MCR_WHISR,
-		    sizeof(ENHANCE_MODE_DATA_STRUCT_T), (PUINT_8) prSDIOCtrl, sizeof(ENHANCE_MODE_DATA_STRUCT_T));
-
 	if (kalIsCardRemoved(prAdapter->prGlueInfo) == TRUE || fgIsBusAccessFailed == TRUE) {
 		*pu4IntStatus = 0;
 		return;
 	}
+
+	HAL_PORT_RD(prAdapter,
+		    MCR_WHISR,
+		    sizeof(ENHANCE_MODE_DATA_STRUCT_T), (PUINT_8) prSDIOCtrl, sizeof(ENHANCE_MODE_DATA_STRUCT_T));
 
 	/* workaround */
 	if ((prSDIOCtrl->u4WHISR & WHISR_TX_DONE_INT) == 0 && (prSDIOCtrl->rTxInfo.au4WTSR[0]

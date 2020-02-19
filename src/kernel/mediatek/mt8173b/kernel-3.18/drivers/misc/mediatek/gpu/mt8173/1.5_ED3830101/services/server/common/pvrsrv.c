@@ -99,6 +99,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #if defined(SUPPORT_DISPLAY_CLASS)
 #include "dc_server.h"
 #endif
+#include "mtk_mfgsys.h"
 
 /*! Wait 100ms before retrying deferred clean-up again */
 #define CLEANUP_THREAD_WAIT_RETRY_TIMEOUT 0x00000064
@@ -2200,7 +2201,9 @@ PVRSRV_ERROR IMG_CALLCONV PollForValueKM (volatile IMG_UINT32*	pui32LinMemAddr,
 
 	PVR_DPF((PVR_DBG_ERROR,"PollForValueKM: Timeout. Expected 0x%x but found 0x%x (mask 0x%x).",
 			ui32Value, ui32ActualValue, ui32Mask));
-	
+	/* MTK add for power status dump*/
+	mtk_mfg_dump_gpu_pwr();
+
 	return PVRSRV_ERROR_TIMEOUT;
 #endif /* NO_HARDWARE */
 }

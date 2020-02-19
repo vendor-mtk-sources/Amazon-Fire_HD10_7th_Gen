@@ -45,4 +45,6 @@ struct mtk_thermal_platform_data_wrapper {
 	struct thermal_dev_params params;
 };
 
+void last_kmsg_thermal_shutdown(void);
+
 #endif /* _MTK_THERMAL_H_ */

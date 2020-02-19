@@ -135,6 +135,11 @@ void kpd_pwrkey_pmic_handler(unsigned long pressed);
 #else
 static inline void kpd_pwrkey_pmic_handler(unsigned long data);
 #endif
+
+#ifdef CONFIG_TOUCHSCREEN_GESTURE_WAKEUP
+void kpd_tpd_wakeup_handler(unsigned long pressed);
+#endif
+
 void kpd_pmic_rstkey_handler(unsigned long pressed);
 #ifdef CONFIG_KPD_VOLUME_KEY_SWAP
 u32 kpd_get_linux_key_code(u32 keycode, bool pressed);

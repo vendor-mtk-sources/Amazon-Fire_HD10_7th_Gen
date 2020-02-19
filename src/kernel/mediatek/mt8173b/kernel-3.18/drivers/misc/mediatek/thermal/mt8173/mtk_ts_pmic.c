@@ -34,6 +34,7 @@
 #include <mt-plat/mt_pmic_wrap.h>
 #include "../../power/mt8173/pmic_mt6397.h"
 
+#include <linux/platform_data/mtk_thermal.h>
 #ifdef CONFIG_AMAZON_SIGN_OF_LIFE
 #include <linux/sign_of_life.h>
 #endif
@@ -364,6 +365,10 @@ static int mtktspmic_thermal_notify(struct thermal_zone_device *thermal,
 #ifdef CONFIG_AMAZON_METRICS_LOG
 	char buf[TSPMIC_METRICS_STR_LEN];
 #endif
+
+	pr_err("%s: thermal_shutdown notify\n", __func__);
+	last_kmsg_thermal_shutdown();
+	pr_err("%s: thermal_shutdown notify end\n", __func__);
 
 #ifdef CONFIG_AMAZON_SIGN_OF_LIFE
 	if (type == THERMAL_TRIP_CRITICAL) {

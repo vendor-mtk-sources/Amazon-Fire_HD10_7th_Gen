@@ -2672,6 +2672,10 @@ static VOID wlanNetDestroy(struct wireless_dev *prWdev)
 VOID wlanSetSuspendMode(P_GLUE_INFO_T prGlueInfo, BOOLEAN fgEnable)
 {
 	struct net_device *prDev = NULL;
+#if CFG_SUPPORT_REPLAY_DETECTION
+	struct GL_DETECT_REPLAY_INFO *prDetRplyInfo = NULL;
+	int i = 0;
+#endif
 
 	if (!prGlueInfo)
 		return;
@@ -2680,6 +2684,21 @@ VOID wlanSetSuspendMode(P_GLUE_INFO_T prGlueInfo, BOOLEAN fgEnable)
 	if (!prDev)
 		return;
 
+#if CFG_SUPPORT_REPLAY_DETECTION
+	prDetRplyInfo = &prGlueInfo->prDetRplyInfo;
+
+	/* Reset while resume */
+	if (!fgEnable) {
+		for (i = 0; i < REPLY_NUM; i++) {
+			prDetRplyInfo->arReplayPNInfo[i].fgRekey = TRUE;
+			prDetRplyInfo->arReplayPNInfo[i].fgFirstPkt = TRUE;
+		}
+	}
+#endif
+
+#if CFG_SUPPORT_SUSPEND_GTK_OFFLOAD
+	wlanSuspendRekeyOffload(prGlueInfo, !fgEnable);
+#endif
 	kalSetNetAddressFromInterface(prGlueInfo, prDev, fgEnable);
 }
 

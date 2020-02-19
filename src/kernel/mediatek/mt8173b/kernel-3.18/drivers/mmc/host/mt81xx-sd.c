@@ -1864,6 +1864,8 @@ static int emmc_tune_response(struct mmc_host *mmc, u32 opcode)
 	int i, j;
 
 	sdr_set_bits(host->base + PAD_CMD_TUNE, BIT(0)); /* select EMMC50 PAD CMD tune */
+	/* set cmd ta to 2 */
+	sdr_set_field(host->base + MSDC_PATCH_BIT1, MSDC_PATCH_BIT1_CMDTA, 2);
 
 	if (mmc->ios.timing == MMC_TIMING_MMC_HS200 ||
 	    mmc->ios.timing == MMC_TIMING_UHS_SDR104)

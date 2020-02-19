@@ -2874,6 +2874,25 @@ static ssize_t store_FG_g_fg_dbg_bat_volt(struct device *dev, struct device_attr
 static DEVICE_ATTR(FG_g_fg_dbg_bat_volt, 0664, show_FG_g_fg_dbg_bat_volt,
 		   store_FG_g_fg_dbg_bat_volt);
 /* ------------------------------------------------------------------------------------------- */
+static ssize_t show_FG_g_fg_dbg_bat_instant_volt(struct device *dev, struct device_attribute *attr,
+					 char *buf)
+{
+	s32 voltage;
+
+	voltage = battery_meter_get_battery_voltage();	/* in unit of mV */
+	bm_print(BM_LOG_FULL, "[FG] instant voltage : %d\n", voltage);
+	return sprintf(buf, "%d\n", voltage);
+}
+
+static ssize_t store_FG_g_fg_dbg_bat_instant_volt(struct device *dev, struct device_attribute *attr,
+					  const char *buf, size_t size)
+{
+	return size;
+}
+
+static DEVICE_ATTR(FG_g_fg_dbg_bat_instant_volt, 0664, show_FG_g_fg_dbg_bat_instant_volt,
+		   store_FG_g_fg_dbg_bat_instant_volt);
+/* ------------------------------------------------------------------------------------------- */
 static ssize_t show_FG_g_fg_dbg_bat_hwocv(struct device *dev, struct device_attribute *attr,
 					  char *buf)
 {
@@ -3188,6 +3207,7 @@ static int battery_meter_probe(struct platform_device *dev)
 	/* Create File For FG UI DEBUG */
 	ret_device_file = device_create_file(&(dev->dev), &dev_attr_FG_Current);
 	ret_device_file = device_create_file(&(dev->dev), &dev_attr_FG_g_fg_dbg_bat_volt);
+	ret_device_file = device_create_file(&(dev->dev), &dev_attr_FG_g_fg_dbg_bat_instant_volt);
 	ret_device_file = device_create_file(&(dev->dev), &dev_attr_FG_g_fg_dbg_bat_hwocv);
 	ret_device_file = device_create_file(&(dev->dev), &dev_attr_FG_g_fg_dbg_bat_current);
 	ret_device_file = device_create_file(&(dev->dev), &dev_attr_FG_g_fg_dbg_bat_zcv);

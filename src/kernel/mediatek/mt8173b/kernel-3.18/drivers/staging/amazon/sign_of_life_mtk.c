@@ -46,6 +46,7 @@
 #define RTC_NEW_SPARE1_COLD_BOOT_USB             (1U << 12)
 #define RTC_NEW_SPARE1_COLD_BOOT_POWER_KEY       (1U << 13)
 #define RTC_NEW_SPARE1_COLD_BOOT_POWER_SUPPLY    (1U << 14)
+#define RTC_NEW_SPARE1_SHUTDOWN_SW_LONG_PWR_KEY_PRESS  (1U << 15)
 
 /*
  * RTC_NEW_SPARE2: RTC_AL_DOW bit0~2
@@ -56,7 +57,6 @@
 #define RTC_NEW_SPARE2_SHUTDOWN_PWR_KEY                (1U << 10)
 #define RTC_NEW_SPARE2_SHUTDOWN_SUDDEN_PWR_LOSS        (1U << 11)
 #define RTC_NEW_SPARE2_SHUTDOWN_UKNOWN                 (1U << 12)
-#define RTC_NEW_SPARE2_SHUTDOWN_SW_LONG_PWR_KEY_PRESS  (1U << 13)
 
 /*
  * RTC_NEW_SPARE3: RTC_AL_MTH bit0~3
@@ -213,7 +213,7 @@ static int (mtk_read_shutdown_reason)(life_cycle_shutdown_reason *shutdown_reaso
 	rtc_shutdown_reason = rtc_read(RTC_AL_DOW);
 	rtc_release_lock();
 
-	printk(KERN_NOTICE"%s: shutdown reason is 0x%x\n", __func__, rtc_shutdown_reason);
+	printk(KERN_NOTICE"%s: shutdown reason new spare2 is 0x%x\n", __func__, rtc_shutdown_reason);
 	if (rtc_shutdown_reason & RTC_NEW_SPARE2_SHUTDOWN_LONG_PWR_KEY_PRESS)
 		*shutdown_reason = SHUTDOWN_BY_LONG_PWR_KEY_PRESS;
 	else if (rtc_shutdown_reason & RTC_NEW_SPARE2_SHUTDOWN_SW)
@@ -224,12 +224,23 @@ static int (mtk_read_shutdown_reason)(life_cycle_shutdown_reason *shutdown_reaso
 		*shutdown_reason = SHUTDOWN_BY_SUDDEN_POWER_LOSS;
 	else if (rtc_shutdown_reason & RTC_NEW_SPARE2_SHUTDOWN_UKNOWN)
 		*shutdown_reason = SHUTDOWN_BY_UNKNOWN_REASONS;
-	else if (rtc_shutdown_reason & RTC_NEW_SPARE2_SHUTDOWN_SW_LONG_PWR_KEY_PRESS)
+	else {
+		printk(KERN_ERR"Failed to read shutdown rtc boot reason\n");
+		return -1;
+	}
+
+	rtc_acquire_lock();
+	rtc_shutdown_reason = rtc_read(RTC_AL_DOM);
+	rtc_release_lock();
+
+	printk(KERN_NOTICE"%s: shutdown reason new spare1 is 0x%x\n", __func__, rtc_shutdown_reason);
+	if (rtc_shutdown_reason & RTC_NEW_SPARE1_SHUTDOWN_SW_LONG_PWR_KEY_PRESS)
 		*shutdown_reason = SHUTDOWN_BY_SW_LONG_PWR_KEY_PRESS;
 	else {
 		printk(KERN_ERR"Failed to read shutdown rtc boot reason\n");
 		return -1;
 	}
+
 
 	return 0;
 }
@@ -240,8 +251,7 @@ static int (mtk_write_shutdown_reason)(life_cycle_shutdown_reason shutdown_reaso
 
 	rtc_acquire_lock();
 	rtc_shutdown_reason = rtc_read(RTC_AL_DOW);
-
-	printk(KERN_NOTICE"%s:shutdown_reason 0x%x\n", __func__, rtc_shutdown_reason);
+	printk(KERN_NOTICE"%s:original shutdown_reason new spare2 0x%x\n", __func__, rtc_shutdown_reason);
 
 	if (shutdown_reason == SHUTDOWN_BY_LONG_PWR_KEY_PRESS)
 		rtc_shutdown_reason = rtc_shutdown_reason | RTC_NEW_SPARE2_SHUTDOWN_LONG_PWR_KEY_PRESS;
@@ -253,11 +263,21 @@ static int (mtk_write_shutdown_reason)(life_cycle_shutdown_reason shutdown_reaso
 		rtc_shutdown_reason = rtc_shutdown_reason | RTC_NEW_SPARE2_SHUTDOWN_SUDDEN_PWR_LOSS;
 	else if (shutdown_reason == SHUTDOWN_BY_UNKNOWN_REASONS)
 		rtc_shutdown_reason = rtc_shutdown_reason | RTC_NEW_SPARE2_SHUTDOWN_UKNOWN;
-	else if (shutdown_reason == SHUTDOWN_BY_SW_LONG_PWR_KEY_PRESS)
-		rtc_shutdown_reason = rtc_shutdown_reason | RTC_NEW_SPARE2_SHUTDOWN_SW_LONG_PWR_KEY_PRESS;
 
+	printk(KERN_NOTICE"%s:shutdown_reason new spare2 0x%x\n", __func__, rtc_shutdown_reason);
 	rtc_write(RTC_AL_DOW, rtc_shutdown_reason);
 	rtc_write_trigger();
+
+	rtc_shutdown_reason = rtc_read(RTC_AL_DOM);
+	printk(KERN_NOTICE"%s:original shutdown_reason new spare1 0x%x\n", __func__, rtc_shutdown_reason);
+
+	if (shutdown_reason == SHUTDOWN_BY_SW_LONG_PWR_KEY_PRESS)
+		rtc_shutdown_reason = rtc_shutdown_reason | RTC_NEW_SPARE1_SHUTDOWN_SW_LONG_PWR_KEY_PRESS;
+
+	printk(KERN_NOTICE"%s:shutdown_reason new spare1 0x%x\n", __func__, rtc_shutdown_reason);
+	rtc_write(RTC_AL_DOM, rtc_shutdown_reason);
+	rtc_write_trigger();
+
 	rtc_release_lock();
 	return 0;
 }
@@ -403,7 +423,10 @@ int mtk_lcr_reset(void)
 	rtc_write_trigger();
 	rtc_release_lock();
 
-	rtc_mark_clear_lprst();
+	/* Don't need clear this bit as it is used and defined by MTK
+	   Lab define this bit for other purpose */
+	/* rtc_mark_clear_lprst(); */
+
 	return 0;
 }
 

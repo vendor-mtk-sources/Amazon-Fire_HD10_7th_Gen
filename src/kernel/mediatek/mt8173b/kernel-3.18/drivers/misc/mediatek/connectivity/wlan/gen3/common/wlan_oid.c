@@ -3449,8 +3449,13 @@ wlanoidSetAddKey(IN P_ADAPTER_T prAdapter, IN PVOID pvSetBuffer, IN UINT_32 u4Se
 	prCmdInfo->eCmdType = COMMAND_TYPE_NETWORK_IOCTL;
 	prCmdInfo->ucBssIndex = prBssInfo->ucBssIndex;
 	prCmdInfo->u2InfoBufLen = CMD_HDR_SIZE + sizeof(CMD_802_11_KEY);
+#if CFG_SUPPORT_REPLAY_DETECTION
+	prCmdInfo->pfCmdDoneHandler = nicCmdEventSetAddKey;
+	prCmdInfo->pfCmdTimeoutHandler = nicOidCmdTimeoutSetAddKey;
+#else
 	prCmdInfo->pfCmdDoneHandler = nicCmdEventSetCommon;
 	prCmdInfo->pfCmdTimeoutHandler = nicOidCmdTimeoutCommon;
+#endif
 	prCmdInfo->fgIsOid = TRUE;
 	prCmdInfo->ucCID = CMD_ID_ADD_REMOVE_KEY;
 	prCmdInfo->fgSetQuery = TRUE;
@@ -8219,6 +8224,10 @@ wlanoidSetNetworkAddress(IN P_ADAPTER_T prAdapter,
 	DBGLOG(OID, INFO,
 	       "%s: Set %lu IPv4 address for BSS[%u]\n", __func__, u4IPv4AddrCount,
 	       prCmdNetworkAddressList->ucBssIndex);
+
+	prCmdNetworkAddressList->ucDtimSkipCount =
+		prAdapter->dtim_skip_count > 0 && prAdapter->dtim_skip_count <= 6 ?
+		prAdapter->dtim_skip_count : 0;
 
 	/* 4 <5> Send command */
 	rStatus = wlanSendSetQueryCmd(prAdapter,

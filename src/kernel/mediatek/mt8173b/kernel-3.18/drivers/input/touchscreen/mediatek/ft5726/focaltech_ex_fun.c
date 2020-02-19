@@ -35,7 +35,10 @@ struct i2c_client *G_Client;
 static struct mutex g_device_mutex;
 /* 0 for no apk upgrade, 1 for apk upgrade */
 int apk_debug_flag = 0;
+int gesture_wakeup_enabled = 0;
 int g_test = 1;
+
+struct mutex fts_gesture_wakeup_mutex;
 
 static unsigned char CTPM_FW_LENS_2T2R[] = {
 #include "R9662_5726_0x6D_V0x8E_20170302_app.h"
@@ -46,11 +49,11 @@ static unsigned char CTPM_FW_TopGroup_2T2R[] = {
 };
 
 static unsigned char CTPM_FW_LENS_1T2R[] = {
-#include "R9662_5726_0x6D_1T2R_V0x8F_20170302_app.h"
+#include "R9662_5726_0x6D_1T2R_V0x91_20180118_app.h"
 };
 
 static unsigned char CTPM_FW_TopGroup_1T2R[] = {
-#include "R9662_5726_0x3E_1T2R_V0x8F_20170302_app.h"
+#include "R9662_5726_0x3E_1T2R_V0x91_20180118_app.h"
 };
 
 /************************************************************************
@@ -1233,6 +1236,67 @@ static DEVICE_ATTR(ftsfwupgradeapp, S_IWUSR | S_IWGRP, NULL,
 static DEVICE_ATTR(ftsscaptest, S_IWUSR | S_IWGRP, NULL,
 	ftxxxx_ftsscaptest_store);
 
+#ifdef CONFIG_TOUCHSCREEN_GESTURE_WAKEUP
+/************************************************************************
+* Name: fts_gesture_wakeup_show
+* Brief:  show Gesture Wakeup status
+* Input: device, device attribute, char buf
+* Output: print value of Guesture Wakeup enable status
+* Return: char number
+***********************************************************************/
+static ssize_t fts_gesture_wakeup_show(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	ssize_t status = 0;
+
+	status = scnprintf(buf, 4, "%d\n", gesture_wakeup_enabled);
+
+	return status;
+}
+
+/************************************************************************
+* Name: fts_gesture_wakeup_store
+* Brief:  write value to disable/enable Gesture Wakeup
+* Input: device, device attribute, char buf, char count
+* Output: print register value
+* Return: char count
+***********************************************************************/
+static ssize_t fts_gesture_wakeup_store(struct device *dev,
+		struct device_attribute *attr,
+		const char *buf, size_t count)
+{
+	unsigned int input;
+	int ret;
+
+	ret = kstrtoint(buf, 0, &input);
+	if (ret != 0)
+		return -EINVAL;
+
+	mutex_lock(&fts_gesture_wakeup_mutex);
+	if (input == 1) {
+		gesture_wakeup_enabled = 1;
+		mutex_unlock(&fts_gesture_wakeup_mutex);
+	}
+	else if (input == 0) {
+		gesture_wakeup_enabled = 0;
+		mutex_unlock(&fts_gesture_wakeup_mutex);
+	}
+	else {
+		mutex_unlock(&fts_gesture_wakeup_mutex);
+		return -EINVAL;
+	}
+
+	return count;
+}
+
+/*sysfs
+* disable/enable Gesture Wakeup
+*example:echo 1 > ftsgesturewakeup
+*/
+static DEVICE_ATTR(ftsgesturewakeup, S_IWUSR | S_IWGRP | S_IRUGO,
+			fts_gesture_wakeup_show, fts_gesture_wakeup_store);
+#endif
+
 /*add your attr in here*/
 static struct attribute *fts_attributes[] = {
 	&dev_attr_ftsesd.attr,
@@ -1241,6 +1305,9 @@ static struct attribute *fts_attributes[] = {
 	&dev_attr_ftstprwreg.attr,
 	&dev_attr_ftsfwupgradeapp.attr,
 	&dev_attr_ftsscaptest.attr,
+#ifdef CONFIG_TOUCHSCREEN_GESTURE_WAKEUP
+	&dev_attr_ftsgesturewakeup.attr,
+#endif
 	NULL
 };
 

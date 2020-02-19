@@ -28,6 +28,7 @@
 #include <asm/errno.h>
 #include <asm/memory.h>
 #include <asm/compiler.h>
+#include <asm/sysreg.h>
 
 #define VERIFY_READ 0
 #define VERIFY_WRITE 1

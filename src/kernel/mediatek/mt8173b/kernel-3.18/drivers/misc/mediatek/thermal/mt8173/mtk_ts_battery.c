@@ -33,6 +33,7 @@
 #include <linux/uidgid.h>
 #include <linux/slab.h>
 #include <linux/reboot.h>
+#include <linux/platform_data/mtk_thermal.h>
 #include "inc/mtk_ts_battery.h"
 
 #ifdef CONFIG_AMAZON_SIGN_OF_LIFE
@@ -367,6 +368,10 @@ static int mtktsbattery_thermal_notify(struct thermal_zone_device *thermal,
 #ifdef CONFIG_AMAZON_METRICS_LOG
 	char buf[TSBATTERY_METRICS_STR_LEN];
 #endif
+
+	pr_err("%s: thermal_shutdown notify\n", __func__);
+	last_kmsg_thermal_shutdown();
+	pr_err("%s: thermal_shutdown notify end\n", __func__);
 
 #ifdef CONFIG_AMAZON_SIGN_OF_LIFE
 	if (type == THERMAL_TRIP_CRITICAL) {

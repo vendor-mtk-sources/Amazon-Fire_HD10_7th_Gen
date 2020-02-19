@@ -1318,3 +1318,6 @@ WLAN_STATUS wlanDhcpTxDone(IN P_ADAPTER_T prAdapter,
 
 WLAN_STATUS wlanArpTxDone(IN P_ADAPTER_T prAdapter,
 			  IN P_MSDU_INFO_T prMsduInfo, IN ENUM_TX_RESULT_CODE_T rTxDoneStatus);
+#if CFG_SUPPORT_SUSPEND_GTK_OFFLOAD
+int wlanSuspendRekeyOffload(P_GLUE_INFO_T prGlueInfo, IN UINT_8 ucRekeyDisable);
+#endif

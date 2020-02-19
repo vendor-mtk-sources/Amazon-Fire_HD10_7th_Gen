@@ -66,6 +66,7 @@ int MTKMFGBaseInit(struct platform_device *pdev);
 int MTKMFGBaseDeInit(struct platform_device *pdev);
 int MTKMFGSystemInit(void);
 int MTKMFGSystemDeInit(void);
+void mtk_mfg_dump_gpu_pwr(void);
 
 /* below register interface in RGX sysconfig.c */
 PVRSRV_ERROR MTKDevPrePowerState(PVRSRV_DEV_POWER_STATE eNew,

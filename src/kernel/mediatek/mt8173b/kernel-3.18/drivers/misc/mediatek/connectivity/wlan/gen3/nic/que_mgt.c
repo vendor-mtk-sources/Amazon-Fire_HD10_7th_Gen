@@ -2972,6 +2972,10 @@ P_SW_RFB_T qmHandleRxPackets(IN P_ADAPTER_T prAdapter, IN P_SW_RFB_T prSwRfbList
 	PUINT_8 pucEthDestAddr;
 	BOOLEAN fgIsBMC, fgIsHTran;
 	BOOLEAN fgMicErr;
+#if CFG_SUPPORT_REPLAY_DETECTION
+	UINT_8 ucBssIndexRly = 0;
+	P_BSS_INFO_T prBssInfoRly = NULL;
+#endif
 
 	/* DbgPrint("QM: Enter qmHandleRxPackets()\n"); */
 
@@ -3109,6 +3113,26 @@ P_SW_RFB_T qmHandleRxPackets(IN P_ADAPTER_T prAdapter, IN P_SW_RFB_T prSwRfbList
 				QUEUE_INSERT_TAIL(prReturnedQue, (P_QUE_ENTRY_T) prCurrSwRfb);
 				continue;
 			}
+		}
+#endif
+#if CFG_SUPPORT_REPLAY_DETECTION
+		if (prCurrSwRfb->prStaRec) {
+			ucBssIndexRly = prCurrSwRfb->prStaRec->ucBssIndex;
+			prBssInfoRly = GET_BSS_INFO_BY_INDEX(prAdapter, ucBssIndexRly);
+			if (prBssInfoRly && !IS_BSS_ACTIVE(prBssInfoRly)) {
+				DBGLOG(QM, INFO,
+				       "Mark NULL the Packet for inactive Bss %u\n",
+				       ucBssIndexRly);
+				prCurrSwRfb->eDst = RX_PKT_DESTINATION_NULL;
+				QUEUE_INSERT_TAIL(prReturnedQue, (P_QUE_ENTRY_T) prCurrSwRfb);
+				continue;
+			}
+		}
+		if (fgIsBMC && prBssInfoRly && IS_BSS_AIS(prBssInfoRly) &&
+		    qmHandleRxReplay(prAdapter, prCurrSwRfb)) {
+			prCurrSwRfb->eDst = RX_PKT_DESTINATION_NULL;
+			QUEUE_INSERT_TAIL(prReturnedQue, (P_QUE_ENTRY_T) prCurrSwRfb);
+			continue;
 		}
 #endif
 		if (prCurrSwRfb->fgReorderBuffer && !fgIsBMC && fgIsHTran) {
@@ -5209,7 +5233,7 @@ VOID qmHandleEventBssAbsencePresence(IN P_ADAPTER_T prAdapter, IN P_WIFI_EVENT_T
 	/* DBGLOG(QM, TRACE, ("qmHandleEventBssAbsencePresence (ucNetTypeIdx=%d, fgIsAbsent=%d, FreeQuota=%d)\n", */
 	/* prEventBssStatus->ucNetTypeIdx, prBssInfo->fgIsNetAbsent, prBssInfo->ucBssFreeQuota)); */
 
-	DBGLOG(QM, INFO, "Bss Absence Presence NAF=%d,%d,%d\n",
+	DBGLOG(QM, TRACE, "Bss Absence Presence NAF=%d,%d,%d\n",
 			  prEventBssStatus->ucBssIndex, prBssInfo->fgIsNetAbsent, prBssInfo->ucBssFreeQuota);
 
 	if (!prBssInfo->fgIsNetAbsent) {
@@ -5538,6 +5562,142 @@ VOID qmDumpQueueStatus(IN P_ADAPTER_T prAdapter)
 
 	DBGLOG(SW4, INFO, "---------------------------------\n\n");
 }
+
+#if CFG_SUPPORT_REPLAY_DETECTION
+/* To change PN number to UINT64 */
+#define CCMPTSCPNNUM	6
+BOOLEAN qmRxPNtoU64(PUINT_8 pucPN, UINT_8 uPNNum, PUINT_64 pu8Rets)
+{
+	UINT_8 ucCount = 0;
+	UINT_64 u8Data = 0;
+
+	if (!pu8Rets) {
+		if (net_ratelimit())
+			DBGLOG(QM, ERROR, "Please input valid pu8Rets\n");
+		return FALSE;
+	}
+
+	if (uPNNum > CCMPTSCPNNUM) {
+		if (net_ratelimit())
+			DBGLOG(QM, ERROR, "Please input valid uPNNum:%d\n", uPNNum);
+		return FALSE;
+	}
+
+	*pu8Rets = 0;
+	for (; ucCount < uPNNum; ucCount++) {
+		u8Data = pucPN[ucCount] << 8*ucCount;
+		*pu8Rets +=  u8Data;
+	}
+	return TRUE;
+}
+
+/* To check PN/TSC between RxStatus and local record. return TRUE if PNS is not bigger than PNT */
+BOOLEAN qmRxDetectReplay(PUINT_8 pucPNS, PUINT_8 pucPNT)
+{
+	UINT_64 u8RxNum = 0;
+	UINT_64 u8LocalRec = 0;
+
+	if (!pucPNS || !pucPNT) {
+		if (net_ratelimit())
+			DBGLOG(QM, ERROR,
+			       "Please input valid PNS:%p and PNT:%p\n",
+			       pucPNS, pucPNT);
+		return TRUE;
+	}
+
+	if (!qmRxPNtoU64(pucPNS, CCMPTSCPNNUM, &u8RxNum)
+		|| !qmRxPNtoU64(pucPNT, CCMPTSCPNNUM, &u8LocalRec)) {
+		if (net_ratelimit())
+			DBGLOG(QM, ERROR, "PN2U64 failed\n");
+		return TRUE;
+	}
+	/* PN overflow ? */
+	return (u8RxNum <= u8LocalRec);
+}
+
+/* TO filter broadcast and multicast data packet replay issue. */
+BOOLEAN qmHandleRxReplay(P_ADAPTER_T prAdapter, P_SW_RFB_T prSwRfb)
+{
+	PUINT_8 pucPN = NULL;
+	UINT_8 ucKeyID = 0;				/* 0~4 */
+	UINT_8 ucSecMode = CIPHER_SUITE_NONE;		/* CIPHER_SUITE_NONE~CIPHER_SUITE_GCMP */
+	P_GLUE_INFO_T prGlueInfo = NULL;
+	P_GL_WPA_INFO_T prWpaInfo = NULL;
+	struct GL_DETECT_REPLAY_INFO *prDetRplyInfo = NULL;
+	P_HW_MAC_RX_DESC_T prRxStatus = NULL;
+
+	if (!prAdapter)
+		return TRUE;
+	if (prSwRfb->u2PacketLen <= ETHER_HEADER_LEN)
+		return TRUE;
+
+	if (!(prSwRfb->ucGroupVLD & BIT(RX_GROUP_VLD_1))) {
+		if (net_ratelimit())
+			DBGLOG(QM, TRACE, "Group 1 invalid\n");
+		return FALSE;
+	}
+
+	/* BMC only need check CCMP and TKIP Cipher suite */
+	prRxStatus = prSwRfb->prRxStatus;
+	ucSecMode = HAL_RX_STATUS_GET_SEC_MODE(prRxStatus);
+	if (ucSecMode != CIPHER_SUITE_CCMP
+		&& ucSecMode != CIPHER_SUITE_TKIP) {
+		if (net_ratelimit())
+			DBGLOG(QM, TRACE,
+			       "SecMode: %d and CipherGroup: %d, no need check replay\n",
+			       ucSecMode, prWpaInfo->u4CipherGroup);
+		return FALSE;
+	}
+
+	ucKeyID = HAL_RX_STATUS_GET_KEY_ID(prRxStatus);
+	if (ucKeyID >= MAX_KEY_NUM) {
+		if (net_ratelimit())
+			DBGLOG(QM, ERROR, "KeyID: %d error\n", ucKeyID);
+		return TRUE;
+	}
+
+	prGlueInfo = prAdapter->prGlueInfo;
+	prWpaInfo = &prGlueInfo->rWpaInfo;
+	prDetRplyInfo = &prGlueInfo->prDetRplyInfo;
+
+	if (prDetRplyInfo->arReplayPNInfo[ucKeyID].fgFirstPkt) {
+		prDetRplyInfo->arReplayPNInfo[ucKeyID].fgFirstPkt = FALSE;
+		HAL_RX_STATUS_GET_PN(prSwRfb->prRxStatusGroup1, prDetRplyInfo->arReplayPNInfo[ucKeyID].auPN);
+		if (net_ratelimit())
+			DBGLOG(QM, INFO,
+			       "First check packet. Key ID:0x%x PN:0x%x:0x%x:0x%x:0x%x:0x%x:0x%x\n",
+			       ucKeyID,
+			       prDetRplyInfo->arReplayPNInfo[ucKeyID].auPN[0],
+			       prDetRplyInfo->arReplayPNInfo[ucKeyID].auPN[1],
+			       prDetRplyInfo->arReplayPNInfo[ucKeyID].auPN[2],
+			       prDetRplyInfo->arReplayPNInfo[ucKeyID].auPN[3],
+			       prDetRplyInfo->arReplayPNInfo[ucKeyID].auPN[4],
+			       prDetRplyInfo->arReplayPNInfo[ucKeyID].auPN[5]);
+		return FALSE;
+	}
+
+	pucPN = prSwRfb->prRxStatusGroup1->aucPN;
+	if (net_ratelimit())
+		DBGLOG(QM, TRACE,
+		       "BC packet KeyID(%d) 0x%x:0x%x:0x%x:0x%x:0x%x:0x%x--0x%x:0x%x:0x%x:0x%x:0x%x:0x%x\n",
+		       ucKeyID,
+		       pucPN[0], pucPN[1], pucPN[2], pucPN[3], pucPN[4], pucPN[5],
+		       prDetRplyInfo->arReplayPNInfo[ucKeyID].auPN[0],
+		       prDetRplyInfo->arReplayPNInfo[ucKeyID].auPN[1],
+		       prDetRplyInfo->arReplayPNInfo[ucKeyID].auPN[2],
+		       prDetRplyInfo->arReplayPNInfo[ucKeyID].auPN[3],
+		       prDetRplyInfo->arReplayPNInfo[ucKeyID].auPN[4],
+		       prDetRplyInfo->arReplayPNInfo[ucKeyID].auPN[5]);
+	if (qmRxDetectReplay(pucPN, prDetRplyInfo->arReplayPNInfo[ucKeyID].auPN)) {
+		if (net_ratelimit())
+			DBGLOG(QM, WARN, "Drop BC replay packet!\n");
+		return TRUE;
+	}
+
+	HAL_RX_STATUS_GET_PN(prSwRfb->prRxStatusGroup1, prDetRplyInfo->arReplayPNInfo[ucKeyID].auPN);
+	return FALSE;
+}
+#endif
 
 #if CFG_M0VE_BA_TO_DRIVER
 /*----------------------------------------------------------------------------*/

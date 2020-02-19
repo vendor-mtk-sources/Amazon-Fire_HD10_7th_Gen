@@ -1158,6 +1158,10 @@ VOID mqmHandleAddBaReq(IN P_ADAPTER_T prAdapter, IN P_SW_RFB_T prSwRfb);
 VOID mqmHandleBaActionFrame(P_ADAPTER_T prAdapter, P_SW_RFB_T prSwRfb);
 #endif
 
+#ifdef CFG_SUPPORT_REPLAY_DETECTION
+BOOLEAN qmHandleRxReplay(P_ADAPTER_T prAdapter, P_SW_RFB_T prSwRfb);
+#endif
+
 /*******************************************************************************
  *                              F U N C T I O N S
  ********************************************************************************

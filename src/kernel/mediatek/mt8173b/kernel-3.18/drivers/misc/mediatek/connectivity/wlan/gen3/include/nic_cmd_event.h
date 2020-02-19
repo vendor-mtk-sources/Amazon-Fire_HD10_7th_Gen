@@ -518,7 +518,7 @@ typedef struct _EVENT_MIC_ERR_INFO {
 /* event of add key done for port control */
 typedef struct _EVENT_ADD_KEY_DONE_INFO {
 	UINT_8 ucBSSIndex;
-	UINT_8 ucReserved;
+	UINT_8 ucKeyId;
 	UINT_8 aucStaAddr[6];
 } EVENT_ADD_KEY_DONE_INFO, *P_EVENT_ADD_KEY_DONE_INFO;
 
@@ -751,7 +751,8 @@ typedef struct _IPV4_NETWORK_ADDRESS {
 typedef struct _CMD_SET_NETWORK_ADDRESS_LIST {
 	UINT_8 ucBssIndex;
 	UINT_8 ucAddressCount;
-	UINT_8 ucReserved[2];
+	UINT_8 ucDtimSkipCount;
+	UINT_8 ucReserved[1];
 	IPV4_NETWORK_ADDRESS arNetAddress[1];
 } CMD_SET_NETWORK_ADDRESS_LIST, *P_CMD_SET_NETWORK_ADDRESS_LIST;
 
@@ -1799,6 +1800,12 @@ VOID nicCmdEventBatchScanResult(IN P_ADAPTER_T prAdapter, IN P_CMD_INFO_T prCmdI
 
 VOID nicCmdEventDbgCntr(IN P_ADAPTER_T prAdapter, IN P_CMD_INFO_T prCmdInfo, IN PUINT_8 pucEventBuf);
 
+#if CFG_SUPPORT_REPLAY_DETECTION
+VOID nicCmdEventSetAddKey(IN P_ADAPTER_T prAdapter, IN P_CMD_INFO_T prCmdInfo,
+			  IN PUINT_8 pucEventBuf);
+VOID nicOidCmdTimeoutSetAddKey(IN P_ADAPTER_T prAdapter,
+			       IN P_CMD_INFO_T prCmdInfo);
+#endif
 /*******************************************************************************
 *                              F U N C T I O N S
 ********************************************************************************

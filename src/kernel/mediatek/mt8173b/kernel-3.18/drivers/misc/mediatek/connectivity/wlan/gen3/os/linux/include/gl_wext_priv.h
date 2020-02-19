@@ -203,7 +203,6 @@
 #define PRIV_CMD_TEST_CMD               18
 #define PRIV_CMD_ACCESS_MCR             19
 #define PRIV_CMD_SW_CTRL                20
-#define PRIV_CMD_INT_STAT                21
 
 #if 1				/* ANTI_PRIVCY */
 #define PRIV_SEC_CHECK_OID              21
@@ -211,7 +210,7 @@
 
 #define PRIV_CMD_WSC_PROBE_REQ          22
 
-#define PRIV_CMD_P2P_VERSION                   23
+#define PRIV_CMD_P2P_VERSION		23
 
 #define PRIV_CMD_GET_CH_LIST            24
 
@@ -232,6 +231,10 @@
 #define PRIV_CMD_SHOW_CHANNEL		36
 
 #define PRIV_CMD_SET_RESETCOUNTER	37
+
+#define PRIV_CMD_INT_STAT		38
+
+#define PRIV_CMD_DTIM_SKIP_COUNT	39
 
 /* 802.3 Objects (Ethernet) */
 #define OID_802_3_CURRENT_ADDRESS           0x01010102

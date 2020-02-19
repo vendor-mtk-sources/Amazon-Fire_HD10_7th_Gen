@@ -99,6 +99,7 @@
 #define PROC_COUNTRY							"country"
 #define PROC_VERSION							"version"
 #define PROC_INT_STAT "int_stat"
+#define PROC_DTIM "dtim_skip_count"
 #endif
 #define PROC_DRV_STATUS                         "status"
 #define PROC_RX_STATISTICS                      "rx_statistics"
@@ -578,6 +579,66 @@ static const struct file_operations int_stat_ops = {
 	.owner = THIS_MODULE,
 	.read = interrupt_stat_read,
 };
+
+static ssize_t dtim_skip_count_read(struct file *filp,
+				   char __user *buf,
+				   size_t count, loff_t *f_pos)
+{
+	UINT_32 u4CopySize;
+	P_ADAPTER_T prAdapter;
+	int pos = 0;
+	unsigned char dtim_skip_count = 0;
+
+	if (g_prGlueInfo_proc != NULL)
+		prAdapter = g_prGlueInfo_proc->prAdapter;
+	else
+		return -EFAULT;
+	/* if *f_pos > 0, it means has read successed last time,
+	 *  don't try again
+	 */
+	if (*f_pos > 0)
+		return 0;
+
+	dtim_skip_count = prAdapter->dtim_skip_count;
+	pos += snprintf(aucProcBuf, sizeof(aucProcBuf),
+			"DTIM Skip Count:%hhu\n",
+			dtim_skip_count);
+
+	PROC_READ_COMMON(buf, f_pos, u4CopySize);
+
+	return (INT_32)u4CopySize;
+}
+
+static ssize_t dtim_skip_count_write(struct file *file,
+				     const char __user *buffer,
+				     size_t count, loff_t *data)
+{
+	P_ADAPTER_T prAdapter;
+	unsigned char dtim_skip_count = 0;
+
+	if (g_prGlueInfo_proc != NULL)
+		prAdapter = g_prGlueInfo_proc->prAdapter;
+	else
+		return -EFAULT;
+
+	PROC_WRITE_COMMON(buffer, count);
+
+	if (sscanf(aucProcBuf, "%hhu", &dtim_skip_count) == 1) {
+		if (dtim_skip_count > 6)
+			return -EINVAL;
+		prAdapter->dtim_skip_count = dtim_skip_count;
+	} else {
+		return -EINVAL;
+	}
+
+	return count;
+}
+
+static const struct file_operations dtim_ops = {
+	.owner = THIS_MODULE,
+	.read = dtim_skip_count_read,
+	.write = dtim_skip_count_write,
+};
 #endif
 
 INT_32 procInitFs(VOID)
@@ -633,6 +694,7 @@ INT_32 procRemoveProcfs(VOID)
 	remove_proc_entry(PROC_COUNTRY, gprProcRoot);
 	remove_proc_entry(PROC_VERSION, gprProcRoot);
 	remove_proc_entry(PROC_INT_STAT, gprProcRoot);
+	remove_proc_entry(PROC_DTIM, gprProcRoot);
 #endif
 	return 0;
 } /* end of procRemoveProcfs() */
@@ -673,6 +735,13 @@ INT_32 procCreateFsEntry(P_GLUE_INFO_T prGlueInfo)
 	proc_set_user(prEntry, KUIDT_INIT(PROC_UID_SHELL), KGIDT_INIT(PROC_GID_WIFI));
 
 	prEntry = proc_create(PROC_INT_STAT, 0664, gprProcRoot, &int_stat_ops);
+	if (prEntry == NULL) {
+		DBGLOG(INIT, ERROR, "Unable to create /proc entry\n\r");
+		return -1;
+	}
+	proc_set_user(prEntry, KUIDT_INIT(PROC_UID_SHELL), KGIDT_INIT(PROC_GID_WIFI));
+
+	prEntry = proc_create(PROC_DTIM, 0664, gprProcRoot, &dtim_ops);
 	if (prEntry == NULL) {
 		DBGLOG(INIT, ERROR, "Unable to create /proc entry\n\r");
 		return -1;

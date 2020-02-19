@@ -51,4 +51,11 @@ config TOUCHSCREEN_MTK_SYNAPTICS_I2C_RMI4
 
 source "drivers/input/touchscreen/mediatek/synaptics_i2c_rmi4/Kconfig"
 
+config TOUCHSCREEN_GESTURE_WAKEUP
+	bool "Touch Screen Gesture Wakeup support"
+	default n
+	help
+	  Say Y here if you support Touch Screen Gesture Wakeup
+	  If unsure, say N.
+
 endif

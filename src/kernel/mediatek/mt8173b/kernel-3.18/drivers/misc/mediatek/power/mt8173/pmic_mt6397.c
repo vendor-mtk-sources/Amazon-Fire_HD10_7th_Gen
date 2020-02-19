@@ -33,6 +33,7 @@
 #include <linux/mfd/mt6397/core.h>
 #include <linux/mfd/mt6397/registers.h>
 #include <linux/reboot.h>
+#include <linux/syscalls.h>
 
 #include <mt-plat/mt_pmic_wrap.h>
 #include <mt-plat/upmu_common.h>
@@ -360,7 +361,7 @@ static void long_press_deferred_restart(struct work_struct *dummy)
 #ifdef CONFIG_AMAZON_SIGN_OF_LIFE
 		life_cycle_set_shutdown_reason(SHUTDOWN_BY_SW_LONG_PWR_KEY_PRESS);
 #endif
-		rtc_mark_enter_sw_lprst();
+		sys_sync();
 		#if defined(CONFIG_MTK_AUTO_POWER_ON_WITH_CHARGER)
 		if (upmu_get_rgs_chrdet())
 			kernel_restart("enter_kpoc");

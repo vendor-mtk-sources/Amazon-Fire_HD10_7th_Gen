@@ -705,6 +705,7 @@ int mtk_cfg80211_scan(struct wiphy *wiphy,
 
 	if (rStatus != WLAN_STATUS_SUCCESS) {
 		DBGLOG(REQ, WARN, "scan error:%lx\n", rStatus);
+		prGlueInfo->prScanRequest = NULL;
 		return -EINVAL;
 	}
 
@@ -737,6 +738,9 @@ int mtk_cfg80211_connect(struct wiphy *wiphy, struct net_device *ndev, struct cf
 	ENUM_PARAM_OP_MODE_T eOpMode;
 	UINT_32 i, u4AkmSuite = 0;
 	P_DOT11_RSNA_CONFIG_AUTHENTICATION_SUITES_ENTRY prEntry;
+#if CFG_SUPPORT_REPLAY_DETECTION
+	struct GL_DETECT_REPLAY_INFO *prDetRplyInfo = NULL;
+#endif
 
 	prGlueInfo = (P_GLUE_INFO_T) wiphy_priv(wiphy);
 	ASSERT(prGlueInfo);
@@ -762,6 +766,11 @@ int mtk_cfg80211_connect(struct wiphy *wiphy, struct net_device *ndev, struct cf
 	prGlueInfo->rWpaInfo.u4CipherGroup = IW_AUTH_CIPHER_NONE;
 	prGlueInfo->rWpaInfo.u4CipherPairwise = IW_AUTH_CIPHER_NONE;
 	prGlueInfo->rWpaInfo.u4AuthAlg = IW_AUTH_ALG_OPEN_SYSTEM;
+#if CFG_SUPPORT_REPLAY_DETECTION
+	/* reset Detect replay information */
+	prDetRplyInfo = &prGlueInfo->prDetRplyInfo;
+	kalMemZero(prDetRplyInfo, sizeof(struct GL_DETECT_REPLAY_INFO));
+#endif
 #if CFG_SUPPORT_802_11W
 	prGlueInfo->rWpaInfo.u4Mfp = IW_AUTH_MFP_DISABLED;
 	switch (sme->mfp) {
@@ -1357,7 +1366,16 @@ int mtk_cfg80211_set_rekey_data(struct wiphy *wiphy, struct net_device *dev, str
 
 	prGlueInfo = (P_GLUE_INFO_T) wiphy_priv(wiphy);
 	ASSERT(prGlueInfo);
+#if CFG_SUPPORT_SUSPEND_GTK_OFFLOAD
+		kalMemZero(prGlueInfo->rWpaInfo.aucKek, NL80211_KEK_LEN);
+		kalMemZero(prGlueInfo->rWpaInfo.aucKck, NL80211_KCK_LEN);
+		kalMemZero(prGlueInfo->rWpaInfo.aucReplayCtr, NL80211_REPLAY_CTR_LEN);
+		kalMemCopy(prGlueInfo->rWpaInfo.aucKek, data->kek, NL80211_KEK_LEN);
+		kalMemCopy(prGlueInfo->rWpaInfo.aucKck, data->kck, NL80211_KCK_LEN);
+		kalMemCopy(prGlueInfo->rWpaInfo.aucReplayCtr, data->replay_ctr, NL80211_REPLAY_CTR_LEN);
 
+		return 0;
+#endif
 	prGtkData = (P_PARAM_GTK_REKEY_DATA)&rGtkData;
 
 	DBGLOG(RSN, INFO, "cfg80211_set_rekey_data! %d\n", sizeof(*data));

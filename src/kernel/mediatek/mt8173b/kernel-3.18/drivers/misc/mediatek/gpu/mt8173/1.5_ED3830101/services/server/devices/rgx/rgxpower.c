@@ -611,6 +611,15 @@ static PVRSRV_ERROR RGXStart(PVRSRV_RGXDEV_INFO	*psDevInfo, PVRSRV_DEVICE_CONFIG
 							 0xFFFFFFFF) != PVRSRV_OK)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "RGXStart: Polling for 'FW started' flag failed."));
+		RGXCheckKCCBsAreEmpty(psDevInfo);
+		{
+			static IMG_BOOL bDone = IMG_FALSE;
+			if(!bDone)
+			{
+				bDone = IMG_TRUE;
+				RGXDebugRequestProcess(NULL, psDevInfo, DEBUG_REQUEST_VERBOSITY_LOW_NO_POWER_LOCK);
+			}
+		}
 		eError = PVRSRV_ERROR_TIMEOUT;
 		DevmemReleaseCpuVirtAddr(psDevInfo->psRGXFWIfInitMemDesc);
 		return eError;
@@ -658,6 +667,7 @@ static PVRSRV_ERROR RGXStop(PVRSRV_RGXDEV_INFO	*psDevInfo)
 {
 	PVRSRV_ERROR		eError; 
 
+	RGXCheckKCCBsAreEmpty(psDevInfo);
 
 	eError = RGXRunScript(psDevInfo, psDevInfo->psScripts->asDeinitCommands, RGX_MAX_DEINIT_COMMANDS, PDUMP_FLAGS_CONTINUOUS, IMG_NULL);
 	if (eError != PVRSRV_OK)

@@ -100,6 +100,7 @@ extern void         mt_gpufreq_disable_by_ptpod(void);
 extern unsigned int mt_gpufreq_get_thermal_limit_index(void);
 extern unsigned int mt_gpufreq_get_thermal_limit_freq(void);
 extern void         mt_gpufreq_thermal_protect(unsigned int limited_power);
+extern void mt_gpufreq_pwr_dump(void);
 
 
 /*****************

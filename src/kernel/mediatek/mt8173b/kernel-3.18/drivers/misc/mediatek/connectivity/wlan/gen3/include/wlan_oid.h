@@ -712,7 +712,8 @@ typedef struct _PARAM_GTK_REKEY_DATA {
 	UINT_8 aucKck[NL80211_KCK_LEN];
 	UINT_8 aucReplayCtr[NL80211_REPLAY_CTR_LEN];
 	UINT_8 ucBssIndex;
-	UINT_8 ucRsv[3];
+	UINT_8 ucRekeyDisable; /* disable rekey offload. 0: enable */
+	UINT_8 ucRsv[2];
 	UINT_32 u4Proto;
 	UINT_32 u4PairwiseCipher;
 	UINT_32 u4GroupCipher;

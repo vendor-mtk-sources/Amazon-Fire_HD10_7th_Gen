@@ -359,6 +359,16 @@ void kpd_pwrkey_handler_hal(unsigned long data)
 #endif
 }
 
+#ifdef CONFIG_TOUCHSCREEN_GESTURE_WAKEUP
+void kpd_tpd_wakeup_hal(unsigned long pressed)
+{
+	if (!kpd_sb_enable) {
+		input_report_key(kpd_input_dev, kpd_dts_data.kpd_sw_pwrkey, pressed);
+		input_sync(kpd_input_dev);
+	}
+}
+#endif
+
 /***********************************************************************/
 void mt_eint_register(void)
 {

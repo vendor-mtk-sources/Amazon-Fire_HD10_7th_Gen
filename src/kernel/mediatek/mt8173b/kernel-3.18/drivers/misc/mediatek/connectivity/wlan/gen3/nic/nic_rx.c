@@ -2368,11 +2368,22 @@ VOID nicRxProcessDataPacket(IN P_ADAPTER_T prAdapter, IN OUT P_SW_RFB_T prSwRfb)
 				rsnTkipHandleMICFailure(prAdapter, prStaRec, 0);
 			}
 		} else if (HAL_RX_STATUS_IS_LLC_MIS(prRxStatus)) {
-			DBGLOG(RSN, EVENT, "LLC_MIS_ERR\n");
+			if (net_ratelimit()) {
+				nicRxFillRFB(prAdapter, prSwRfb);
+				DBGLOG(RSN, EVENT, "LLC_MIS_ERR\n");
+				if (HAL_RX_STATUS_GET_HEADER_LEN(prRxStatus) <=
+				    WLAN_MAC_HEADER_LEN) {
+					print_hex_dump(KERN_INFO, "",
+						       DUMP_PREFIX_OFFSET,
+						       16, 1,
+						       (PUINT_8)prSwRfb->pvHeader,
+						       (UINT_16)HAL_RX_STATUS_GET_HEADER_LEN(prRxStatus),
+						       false);
+				}
+			}
 			fgDrop = FALSE;	/* Drop after send de-auth  */
 		}
 	}
-
 
 
 #if 0				/* Check 1x Pkt */
@@ -3376,19 +3387,36 @@ VOID nicRxProcessEventPacket(IN P_ADAPTER_T prAdapter, IN OUT P_SW_RFB_T prSwRfb
 		{
 			P_EVENT_ADD_KEY_DONE_INFO prAddKeyDone;
 			P_STA_RECORD_T prStaRec;
-
+			UINT_8 ucKeyId = 0;
+#if CFG_SUPPORT_REPLAY_DETECTION
+			struct GL_DETECT_REPLAY_INFO *prDetRplyInfo = NULL;
+#endif
 			prAddKeyDone = (P_EVENT_ADD_KEY_DONE_INFO) (prEvent->aucBuffer);
 
+			ucKeyId = prAddKeyDone->ucKeyId;
+#if CFG_SUPPORT_REPLAY_DETECTION
+			prGlueInfo = prAdapter->prGlueInfo;
+			prDetRplyInfo = &prGlueInfo->prDetRplyInfo;
+#endif
+
 			DBGLOG(RSN, TRACE,
-			       "EVENT_ID_ADD_PKEY_DONE BSSIDX=%d " MACSTR "\n",
-			       prAddKeyDone->ucBSSIndex, MAC2STR(prAddKeyDone->aucStaAddr));
+			       "EVENT_ID_ADD_PKEY_DONE BSSIDX=%d KeyID=%d " MACSTR "\n",
+			       prAddKeyDone->ucBSSIndex, prAddKeyDone->ucKeyId, MAC2STR(prAddKeyDone->aucStaAddr));
 
 			prStaRec = cnmGetStaRecByAddress(prAdapter, prAddKeyDone->ucBSSIndex, prAddKeyDone->aucStaAddr);
 
 			if (prStaRec) {
-				DBGLOG(RSN, EVENT, "STA " MACSTR " Add Key Done!!\n", MAC2STR(prStaRec->aucMacAddr));
+				DBGLOG(RSN, EVENT, "STA " MACSTR " Add Key Done KeyID=%d!!\n",
+				       MAC2STR(prStaRec->aucMacAddr), ucKeyId);
 				prStaRec->fgIsTxKeyReady = TRUE;
 				qmUpdateStaRec(prAdapter, prStaRec);
+#if CFG_SUPPORT_REPLAY_DETECTION
+				if (ucKeyId < REPLY_NUM) {
+					prDetRplyInfo->ucCurKeyId = ucKeyId;
+					prDetRplyInfo->arReplayPNInfo[ucKeyId].fgRekey = TRUE;
+					prDetRplyInfo->arReplayPNInfo[ucKeyId].fgFirstPkt = TRUE;
+				}
+#endif
 			}
 		}
 		break;
@@ -4104,7 +4132,7 @@ VOID nicRxSDIOAggReceiveRFBs(IN P_ADAPTER_T prAdapter)
 	P_RX_CTRL_T prRxCtrl;
 	P_SDIO_CTRL_T prSDIOCtrl;
 	P_SW_RFB_T prSwRfb = (P_SW_RFB_T) NULL;
-	UINT_32 u4RxLength;
+	UINT_32 u2PktLength;
 	UINT_32 i, rxNum;
 	UINT_32 u4RxAggCount = 0, u4RxAggLength = 0;
 	UINT_32 u4RxAvailAggLen, u4CurrAvailFreeRfbCnt;
@@ -4148,11 +4176,16 @@ VOID nicRxSDIOAggReceiveRFBs(IN P_ADAPTER_T prAdapter)
 			    (rxNum ==
 			     0 ? prEnhDataStr->rRxInfo.u.u2NumValidRx0Len : prEnhDataStr->rRxInfo.u.u2NumValidRx1Len);
 
-			/* if this assertion happened, it is most likely a F/W bug */
-			ASSERT(u2RxPktNum <= 16);
-
-			if (u2RxPktNum > 16)
-				continue;
+			if (u2RxPktNum > 16) {
+				DBGLOG(RX, ERROR, "Abnormal PktNum(%d) in RX%u, need chip reset!\n",
+				       u2RxPktNum, rxNum);
+				DBGLOG_MEM32(RX, WARN, (PUINT_32)&prEnhDataStr->rRxInfo,
+					     sizeof(prEnhDataStr->rRxInfo));
+#if CFG_CHIP_RESET_SUPPORT
+				glResetTrigger(prAdapter);
+#endif
+				return;
+			}
 
 			if (u2RxPktNum == 0)
 				continue;
@@ -4184,18 +4217,39 @@ VOID nicRxSDIOAggReceiveRFBs(IN P_ADAPTER_T prAdapter)
 			u4RxAggCount = 0;
 
 			for (i = 0; i < u2RxPktNum; i++) {
-				u4RxLength = (rxNum == 0 ?
+				u2PktLength = (rxNum == 0 ?
 					      (UINT_32) prEnhDataStr->rRxInfo.u.au2Rx0Len[i] :
 					      (UINT_32) prEnhDataStr->rRxInfo.u.au2Rx1Len[i]);
 
-				if (!u4RxLength) {
-					ASSERT(0);
+				if (!u2PktLength) {
+					DBGLOG(RX, ERROR, "Abnormal PktLen(%d) in RX%u idx %u, need chip reset!\n",
+					       u2PktLength, rxNum, i);
+					DBGLOG_MEM32(RX, WARN, (PUINT_32)&prEnhDataStr->rRxInfo,
+						     sizeof(prEnhDataStr->rRxInfo));
+#if CFG_CHIP_RESET_SUPPORT
+					glResetTrigger(prAdapter);
+#endif
+					return;
+				} else if (u2PktLength > CFG_RX_MAX_PKT_SIZE) {
+					DBGLOG(RX, ERROR,
+					       "PktLen(%d) > MAX_PKT_SIZE(%d) in RX%u idx %u, try to read the header\n",
+					       u2PktLength, CFG_RX_MAX_PKT_SIZE, rxNum, i);
+					/*
+					 * Rx packet length is too large, coalescing buffer may be not enough,
+					 * at least read out the DW0 to check Rx byte count.
+					 */
+					if (ALIGN_4(u2PktLength + HIF_RX_HW_APPENDED_LEN) <= u4RxAvailAggLen)
+						u4RxAvailAggLen -= ALIGN_4(u2PktLength + HIF_RX_HW_APPENDED_LEN);
+					else
+						u4RxAvailAggLen = 0;
+
+					u4RxAggCount++;
 					break;
 				}
 
-				if (ALIGN_4(u4RxLength + HIF_RX_HW_APPENDED_LEN) < u4RxAvailAggLen) {
+				if (ALIGN_4(u2PktLength + HIF_RX_HW_APPENDED_LEN) <= u4RxAvailAggLen) {
 					if (u4RxAggCount < u4CurrAvailFreeRfbCnt) {
-						u4RxAvailAggLen -= ALIGN_4(u4RxLength + HIF_RX_HW_APPENDED_LEN);
+						u4RxAvailAggLen -= ALIGN_4(u2PktLength + HIF_RX_HW_APPENDED_LEN);
 						u4RxAggCount++;
 					} else {
 						/* no FreeSwRfb for rx packet */
@@ -4211,7 +4265,7 @@ VOID nicRxSDIOAggReceiveRFBs(IN P_ADAPTER_T prAdapter)
 					DBGLOG(RX, ERROR,
 					       "[%s] Request_len(%d) is greater than Available_len(%d)\n",
 					       __func__,
-					       (ALIGN_4(u4RxLength + HIF_RX_HW_APPENDED_LEN)), u4RxAvailAggLen);
+					       (ALIGN_4(u2PktLength + HIF_RX_HW_APPENDED_LEN)), u4RxAvailAggLen);
 #if CFG_CHIP_RESET_SUPPORT
 					if (fgResult) {
 						glResetTrigger(prAdapter);
@@ -4220,7 +4274,7 @@ VOID nicRxSDIOAggReceiveRFBs(IN P_ADAPTER_T prAdapter)
 #else
 					ASSERT(0);
 #endif
-					break;
+					return;
 				}
 			}
 
@@ -4238,26 +4292,18 @@ VOID nicRxSDIOAggReceiveRFBs(IN P_ADAPTER_T prAdapter)
 
 			pucSrcAddr = prRxCtrl->pucRxCoalescingBufPtr;
 			for (i = 0; i < u4RxAggCount; i++) {
-				UINT_16 u2PktLength;
-
 				u2PktLength = (rxNum == 0 ?
 					       prEnhDataStr->rRxInfo.u.au2Rx0Len[i] :
 					       prEnhDataStr->rRxInfo.u.au2Rx1Len[i]);
 
-				if (ALIGN_4(u2PktLength + HIF_RX_HW_APPENDED_LEN) > CFG_RX_MAX_PKT_SIZE) {
-					DBGLOG(RX, ERROR,
-					       "[%s] Request_len(%d) is greater than CFG_RX_MAX_PKT_SIZE(%d), pktLen(%d)...",
-						__func__, (ALIGN_4(u2PktLength + HIF_RX_HW_APPENDED_LEN)),
-						CFG_RX_MAX_PKT_SIZE, u2PktLength);
-					DBGLOG(RX, ERROR,
-					       "Drop the unexpected packet...\n");
-					DBGLOG_MEM8(RX, ERROR, &(prEnhDataStr->rRxInfo.u.au2Rx0Len[0]), 32);
-					DBGLOG_MEM32(RX, ERROR, pucSrcAddr,
-						     ALIGN_4(u2PktLength + HIF_RX_HW_APPENDED_LEN) > 64 ? 64 : ALIGN_4(u2PktLength + HIF_RX_HW_APPENDED_LEN));
-
-					pucSrcAddr += ALIGN_4(u2PktLength + HIF_RX_HW_APPENDED_LEN);
-					RX_INC_CNT(prRxCtrl, RX_DROP_TOTAL_COUNT);
-					continue;
+				if (u2PktLength > CFG_RX_MAX_PKT_SIZE) {
+					DBGLOG(RX, ERROR, "Abnormal PktLen(%d) in RX%u idx %u, RxByteCount(%d)!\n",
+					       u2PktLength, rxNum, i, ((HW_MAC_RX_DESC_T *)pucSrcAddr)->u2RxByteCount);
+					DBGLOG_MEM32(RX, ERROR, pucSrcAddr, sizeof(HW_MAC_RX_DESC_T));
+#if CFG_CHIP_RESET_SUPPORT
+					glResetTrigger(prAdapter);
+#endif
+					return;
 				}
 
 				KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_RX_FREE_QUE);
@@ -4416,6 +4462,10 @@ VOID nicProcessRxInterrupt(IN P_ADAPTER_T prAdapter)
 {
 	ASSERT(prAdapter);
 
+#if CFG_CHIP_RESET_SUPPORT
+	if (fgIsResetting || fgResetTriggered)
+		return;
+#endif
 #if CFG_SDIO_INTR_ENHANCE
 #if CFG_SDIO_RX_AGG
 	nicRxSDIOAggReceiveRFBs(prAdapter);

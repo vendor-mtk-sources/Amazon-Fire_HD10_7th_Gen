@@ -24,7 +24,7 @@ extern s32 battery_meter_get_battery_voltage_cached(void);
 extern s32 battery_meter_get_average_battery_voltage(void);
 
 #define BATTERY_MAX_BUDGET  (-1)
-#define BATTERY_MIN_BUDGET  430
+#define BATTERY_MIN_BUDGET  800
 #define BATTERY_MAX_BUDGET_FACTOR  10
 #define BATTERY_MIN_BUDGET_FACTOR  0
 #define BATTERY_BUDGET_MIN_VOLTAGE 3450

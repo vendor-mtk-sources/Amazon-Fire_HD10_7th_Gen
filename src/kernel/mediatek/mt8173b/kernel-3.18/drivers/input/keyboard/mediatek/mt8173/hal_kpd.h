@@ -47,6 +47,9 @@ void kpd_init_keymap_state(u16 keymap_state[]);
 void kpd_pmic_rstkey_hal(unsigned long pressed);
 void kpd_pmic_pwrkey_hal(unsigned long pressed);
 void kpd_pwrkey_handler_hal(unsigned long data);
+#ifdef CONFIG_TOUCHSCREEN_GESTURE_WAKEUP
+void kpd_tpd_wakeup_hal(unsigned long pressed);
+#endif
 void mt_eint_register(void);
 extern struct input_dev *kpd_input_dev;
 

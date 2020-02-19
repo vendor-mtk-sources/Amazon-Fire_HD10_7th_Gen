@@ -1,15 +1,15 @@
 /*
-* Copyright (C) 2013 MediaTek Inc.
-*
-* This program is free software; you can redistribute it and/or modify
-* it under the terms of the GNU General Public License version 2 as
-* published by the Free Software Foundation.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-* See http://www.gnu.org/licenses/gpl-2.0.html for more details.
-*/
+ * Copyright (C) 2016 MediaTek Inc.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ */
 
 #include <linux/clk.h>
 #include <linux/device.h>
@@ -38,8 +38,8 @@
 
 #define TIMEOUT	100
 #define MD32_DEVICE_NAME	"md32"
-#define MD32_DATA_IMAGE_PATH	"/etc/firmware/md32_d.bin"
-#define MD32_PROGRAM_IMAGE_PATH	"/etc/firmware/md32_p.bin"
+#define MD32_DATA_IMAGE_PATH	"/md32_d.bin"
+#define MD32_PROGRAM_IMAGE_PATH	"/md32_p.bin"
 
 #define MD32_SEMAPHORE	(MD32_BASE + 0x90)
 
@@ -81,6 +81,16 @@ static void memcpy_md32(void __iomem *trg, const void *src, int size)
 	const u32 *s = src;
 
 	for (i = 0; i < (size >> 2); i++)
+		*t++ = *s++;
+}
+
+void memcpy_from_md32(void *trg, const void __iomem *src, int size)
+{
+	int i;
+	u32 *t = trg;
+	const u32 __iomem *s = src;
+
+	for (i = 0; i < ((size + 3) >> 2); i++)
 		*t++ = *s++;
 }
 
@@ -306,7 +316,7 @@ int get_md32_img_sz(const char *IMAGE_PATH)
 	filp = filp_open(IMAGE_PATH, O_RDONLY, 0644);
 
 	if (IS_ERR(filp)) {
-		pr_err("Open MD32 image %s FAIL!\n", IMAGE_PATH);
+		pr_err("[MD32] Open MD32 image %s FAIL! (%ld)\n", IMAGE_PATH, PTR_ERR(filp));
 		return -1;
 	}
 
@@ -328,12 +338,12 @@ int load_md32(const char *IMAGE_PATH, unsigned long dst)
 	filp = filp_open(IMAGE_PATH, O_RDONLY, 0644);
 
 	if (IS_ERR(filp)) {
-		pr_err("Open MD32 image %s FAIL!\n", IMAGE_PATH);
+		pr_err("[MD32] Open MD32 image %s FAIL (%ld)!\n", IMAGE_PATH, PTR_ERR(filp));
 		goto error;
 	} else {
 		inode = filp->f_dentry->d_inode;
 		fsize = inode->i_size;
-		pr_debug("MD32 file %s size: %i\n", IMAGE_PATH, (int)fsize);
+		pr_debug("[MD32] file %s size: %i\n", IMAGE_PATH, (int)fsize);
 		buf = kmalloc((size_t)fsize + 1, GFP_KERNEL);
 		fs = get_fs();
 		set_fs(KERNEL_DS);
@@ -355,8 +365,14 @@ error:
 
 	return -1;
 }
+/* put md32 in reset state */
+void md32_reset_hold(void)
+{
+	mt_reg_sync_writel(0x0, MD32_BASE);
+}
 
-void boot_up_md32(void)
+/* release md32 reset */
+void md32_boot_up(void)
 {
 	mt_reg_sync_writel(0x1, MD32_BASE);
 }
@@ -412,7 +428,7 @@ int reboot_load_md32(void)
 		pr_warn("MD32 is already running, reboot now...\n");
 
 	/* reset MD32 */
-	mt_reg_sync_writel(0x0, MD32_BASE);
+	md32_reset_hold();
 
 	d_sz = get_md32_img_sz(MD32_DATA_IMAGE_PATH);
 	if (d_sz <= 0) {
@@ -465,7 +481,7 @@ int reboot_load_md32(void)
 
 	memcpy_md32((void *)MD32_PTCM, (const void *)md32_program_image, p_sz);
 
-	boot_up_md32();
+	md32_boot_up();
 	return ret;
 
 error:
@@ -708,6 +724,9 @@ static int md32_probe(struct platform_device *pdev)
 	if (ret)
 		dev_err(&pdev->dev, "[MD32] failed to request irq\n");
 
+	pr_debug("[MD32] start run MD32 firmware\n");
+	reboot_load_md32();
+
 	return ret;
 }
 
@@ -717,17 +736,42 @@ static int md32_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static int mtk_md32_suspend(struct device *dev)
+{
+	clk_disable_unprepare(md32_clksys);
+
+	return 0;
+}
+
+static int mtk_md32_resume(struct device *dev)
+{
+	int ret = clk_prepare_enable(md32_clksys);
+
+	if (ret) {
+		dev_err(dev, "[MD32] failed to enable md32 clock at resume\n");
+		return ret;
+	}
+
+	return 0;
+}
+
 static const struct of_device_id md32_match[] = {
 	{ .compatible = "mediatek,mt8173-md32",},
 	{},
 };
 MODULE_DEVICE_TABLE(of, md32_match);
 
+static const struct dev_pm_ops mtk_md32_pm = {
+	.suspend = mtk_md32_suspend,
+	.resume = mtk_md32_resume,
+};
+
 static struct platform_driver md32_driver = {
 	.probe	= md32_probe,
 	.remove	= md32_remove,
 	.driver	= {
 		.name	= MD32_DEVICE_NAME,
+		.pm = &mtk_md32_pm,
 		.owner	= THIS_MODULE,
 		.of_match_table = md32_match,
 	},

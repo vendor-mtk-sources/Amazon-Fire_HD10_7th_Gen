@@ -527,6 +527,10 @@ static const struct iw_priv_args rIwPrivTable[] = {
 	{PRIV_CMD_CONNSTATUS, 0, 256, "connStatus"},
 	{PRIV_CMD_SHOW_CHANNEL, 0, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, "show_Channel"},
 	{PRIV_CMD_SET_RESETCOUNTER, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0, "set_ResetCounter"},
+	{PRIV_CMD_DTIM_SKIP_COUNT, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
+		"set_dtim_skip"},
+	{PRIV_CMD_DTIM_SKIP_COUNT, 0, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1,
+		"get_dtim_skip"},
 };
 
 static const iw_handler rIwPrivHandler[] = {

@@ -14,6 +14,7 @@
 #include <linux/delay.h>
 #include <linux/mutex.h>
 #include <linux/clk.h>
+#include <linux/clk-private.h>
 #include <linux/io.h>
 #include <linux/platform_device.h>
 #include <linux/of.h>
@@ -35,6 +36,9 @@
 #include "mt_gpufreq.h"
 #include <trace/events/mtk_events.h>
 #include <dt-bindings/clock/mt8173-clk.h>
+
+#include <mt-plat/upmu_common.h> //PMIC cxd
+
 
 #include "mtk_mfgsys.h"
 #include "rgxdevice.h"
@@ -144,6 +148,30 @@ static void mtk_mfg_disable_hw_apm(void)
 static void mtk_mfg_enable_hw_apm(void) {};
 static void mtk_mfg_disable_hw_apm(void) {};
 #endif /* MTK_ENABLE_HWAPM */
+
+static void mtk_mfg_dump_vgpu_power_status(void)
+{
+	pr_warn("[PVR] vgpu_status: Reg[0x%x]=0x%x; Reg[0x%x]=0x%x; Reg[0x%x]=0x%x; Reg[0x%x]=0x%x; Reg[0x%x]=0x%x; \n",
+			VGPU_CON6, upmu_get_reg_value(VGPU_CON6),
+			VGPU_CON9, upmu_get_reg_value(VGPU_CON9),
+			VGPU_CON10,	upmu_get_reg_value(VGPU_CON10),
+			VGPU_CON11,	upmu_get_reg_value(VGPU_CON11),
+			VGPU_CON12,	upmu_get_reg_value(VGPU_CON12));
+}
+
+void mtk_mfg_dump_gpu_pwr(void)
+{
+	struct mtk_mfg_base *mfg_base = GET_MTK_MFG_BASE(sPVRLDMDev);
+	int i;
+	mtk_mfg_dump_vgpu_power_status();
+	mt_gpufreq_pwr_dump();
+	for (i = 0; i < MAX_TOP_MFG_CLK; i++)
+	pr_info("PVR_K: dump_clk_state clk_%s_ref[%d], enabled[%d], prepare_cnt[%d]\n",
+		top_mfg_clk_name[i],
+		__clk_get_enable_count(mfg_base->top_clk[i]),
+		__clk_is_enabled(mfg_base->top_clk[i]),
+		__clk_get_prepare_count(mfg_base->top_clk[i]));
+}
 
 static void mtk_mfg_enable_clock(void)
 {

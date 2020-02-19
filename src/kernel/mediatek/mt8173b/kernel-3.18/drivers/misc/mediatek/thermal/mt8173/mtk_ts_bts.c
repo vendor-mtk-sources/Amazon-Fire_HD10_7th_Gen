@@ -34,6 +34,7 @@
 #include <inc/tmp_bts.h>
 #include <linux/slab.h>
 #include <linux/device.h>
+#include <linux/platform_data/mtk_thermal.h>
 #include "inc/mtkthermal.h"
 #include "inc/thermal_framework.h"
 
@@ -475,6 +476,10 @@ static int mtkts_bts_thermal_notify(struct thermal_zone_device *thermal,
 	char buf[TSBTS_METRICS_STR_LEN];
 #endif
 
+	pr_err("%s: thermal_shutdown notify\n", __func__);
+	last_kmsg_thermal_shutdown();
+	pr_err("%s: thermal_shutdown notify end\n", __func__);
+
 #ifdef CONFIG_AMAZON_SIGN_OF_LIFE
 	if (type == THERMAL_TRIP_CRITICAL) {
 		pr_debug("[%s] Thermal shutdown bts, temp=%d, trip=%d\n",
@@ -835,16 +840,16 @@ static struct platform_driver mtkts_bts_driver = {
 };
 
 static struct mtk_thermal_platform_data mtkts_bts_thermal_data0 = {
-	.num_trips = 3,
+	.num_trips = 0,
 	.mode = THERMAL_DEVICE_DISABLED,
 	.polling_delay = 1000,
 	/* original trip temps:
 	   {120000,110000,100000,90000,80000,70000,65000,60000,55000,50000};
 	   Only use the ones below critical temp
-	*/
 	.trips[0] = {.temp = 85000, .type = THERMAL_TRIP_ACTIVE, .hyst = 0},
 	.trips[1] = {.temp = 90000, .type = THERMAL_TRIP_ACTIVE, .hyst = 0},
 	.trips[2] = {.temp = MTKTS_BTS_TEMP_CRIT, .type = THERMAL_TRIP_CRITICAL, .hyst = 0},
+	*/
 };
 
 static struct platform_device mtkts_bts_device0 = {
@@ -856,16 +861,16 @@ static struct platform_device mtkts_bts_device0 = {
 };
 
 static struct mtk_thermal_platform_data mtkts_bts_thermal_data1 = {
-	.num_trips = 3,
+	.num_trips = 0,
 	.mode = THERMAL_DEVICE_DISABLED,
 	.polling_delay = 1000,
 	/* original trip temps:
 	   {120000,110000,100000,90000,80000,70000,65000,60000,55000,50000};
 	   Only use the ones below critical temp
-	*/
 	.trips[0] = {.temp = 85000, .type = THERMAL_TRIP_ACTIVE, .hyst = 0},
 	.trips[1] = {.temp = 90000, .type = THERMAL_TRIP_ACTIVE, .hyst = 0},
 	.trips[2] = {.temp = MTKTS_BTS_TEMP_CRIT, .type = THERMAL_TRIP_CRITICAL, .hyst = 0},
+	*/
 };
 
 static struct platform_device mtkts_bts_device1 = {
@@ -877,16 +882,16 @@ static struct platform_device mtkts_bts_device1 = {
 };
 
 static struct mtk_thermal_platform_data mtkts_bts_thermal_data2 = {
-	.num_trips = 3,
+	.num_trips = 0,
 	.mode = THERMAL_DEVICE_DISABLED,
 	.polling_delay = 1000,
 	/* original trip temps:
 	   {120000,110000,100000,90000,80000,70000,65000,60000,55000,50000};
 	   Only use the ones below critical temp
-	*/
 	.trips[0] = {.temp = 85000, .type = THERMAL_TRIP_ACTIVE, .hyst = 0},
 	.trips[1] = {.temp = 90000, .type = THERMAL_TRIP_ACTIVE, .hyst = 0},
 	.trips[2] = {.temp = MTKTS_BTS_TEMP_CRIT, .type = THERMAL_TRIP_CRITICAL, .hyst = 0},
+	*/
 };
 
 static struct platform_device mtkts_bts_device2 = {

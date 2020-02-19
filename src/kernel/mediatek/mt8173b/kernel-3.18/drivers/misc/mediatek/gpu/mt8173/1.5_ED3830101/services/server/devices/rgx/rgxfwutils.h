@@ -713,6 +713,7 @@ PVRSRV_ERROR RGXPdumpDrainKCCB(PVRSRV_RGXDEV_INFO *psDevInfo,
                                RGXFWIF_DM eKCCBType);
 #endif /* PDUMP */
 
+IMG_BOOL RGXCheckKCCBsAreEmpty(PVRSRV_RGXDEV_INFO *psDevInfo);
 
 #endif /* __RGXFWUTILS_H__ */
 /******************************************************************************

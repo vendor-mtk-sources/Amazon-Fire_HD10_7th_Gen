@@ -2762,15 +2762,21 @@ IMG_VOID RGXDebugRequestProcess(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
                                 PVRSRV_RGXDEV_INFO	*psDevInfo,
                                 IMG_UINT32			ui32VerbLevel)
 {
-	PVRSRV_ERROR eError = PVRSRVPowerLock();
-	if (eError != PVRSRV_OK)
+	PVRSRV_ERROR eError = PVRSRV_OK;
+
+	if(ui32VerbLevel != DEBUG_REQUEST_VERBOSITY_LOW_NO_POWER_LOCK)
 	{
-		PVR_DPF((PVR_DBG_ERROR,	"RGXDebugRequestProcess : failed to acquire lock, error:0x%x", eError));
-		return;
+		eError = PVRSRVPowerLock();
+		if (eError != PVRSRV_OK)
+		{
+			PVR_DPF((PVR_DBG_ERROR,	"RGXDebugRequestProcess : failed to acquire lock, error:0x%x", eError));
+			return;
+		}
 	}
 
 	switch (ui32VerbLevel)
 	{
+		case DEBUG_REQUEST_VERBOSITY_LOW_NO_POWER_LOCK :
 		case DEBUG_REQUEST_VERBOSITY_LOW :
 		{
 			IMG_UINT32              ui32DeviceIndex;
@@ -3045,7 +3051,10 @@ IMG_VOID RGXDebugRequestProcess(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 	}
 
 Exit:
-	PVRSRVPowerUnlock();
+	if(ui32VerbLevel != DEBUG_REQUEST_VERBOSITY_LOW_NO_POWER_LOCK)
+	{
+		PVRSRVPowerUnlock();
+	}
 }
 
 /*

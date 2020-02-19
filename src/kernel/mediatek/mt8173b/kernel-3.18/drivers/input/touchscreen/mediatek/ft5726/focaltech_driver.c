@@ -299,6 +299,14 @@ static struct i2c_driver tpd_i2c_driver = {
 	.address_list = (const unsigned short *)forces,
 };
 
+#ifdef CONFIG_TOUCHSCREEN_GESTURE_WAKEUP
+static void tpd_wakeup_handler(void)
+{
+	kpd_tpd_wakeup_handler(0x1);
+	kpd_tpd_wakeup_handler(0x0);
+}
+#endif
+
 /***********************************************************************
 * Name: fts_report_value
 * Brief: report the point information
@@ -372,6 +380,13 @@ static int fts_report_value(struct ts_event *data)
 		input_report_key(tpd->dev, BTN_TOUCH, 1);
 	else
 		input_report_key(tpd->dev, BTN_TOUCH, 0);
+
+#ifdef CONFIG_TOUCHSCREEN_GESTURE_WAKEUP
+	if ((focal_suspend_flag == true) && (gesture_wakeup_enabled == 1)) {
+		tpd_wakeup_handler();
+		focal_suspend_flag = false;
+	}
+#endif
 
 	input_sync(tpd->dev);
 	return 0;
@@ -540,6 +555,34 @@ static void tpd_power_on(void)
 
 	fts_reset_hw();
 }
+
+#ifdef CONFIG_TOUCHSCREEN_GESTURE_WAKEUP
+static void gesture_wakeup_enable(void)
+{
+	int retval = 0;
+
+	if (gesture_wakeup_enabled == 1) {
+		retval = irq_set_irq_wake(touch_irq, true);
+		if (retval)
+			pr_err("%s: irq_set_irq_wake err = %d\n", __func__, retval);
+		enable_irq(touch_irq);
+
+		mutex_lock(&i2c_access);
+		fts_write_reg(i2c_client, 0xD0, 0x01);
+		fts_write_reg(i2c_client, 0xD1, 0x10);
+		mutex_unlock(&i2c_access);
+	} else {
+#ifdef FTS_POWER_DOWN_IN_SUSPEND
+		tpd_power_down();
+#else
+		/* write i2c command to make IC into deepsleep */
+		mutex_lock(&i2c_access);
+		fts_write_reg(i2c_client, 0xa5, 0x03);
+		mutex_unlock(&i2c_access);
+#endif
+	}
+}
+#endif
 
 static int of_get_focal_platform_data(struct device *dev)
 {
@@ -779,6 +822,10 @@ static int tpd_focal_probe(struct i2c_client *client,
 		goto err_free_hw;
 	}
 
+#ifdef CONFIG_TOUCHSCREEN_GESTURE_WAKEUP
+	mutex_init(&fts_gesture_wakeup_mutex);
+#endif
+
 	thread = kthread_run(touch_event_handler, 0, TPD_DEVICE);
 	if (IS_ERR(thread)) {
 		retval = PTR_ERR(thread);
@@ -929,6 +976,10 @@ static void tpd_focal_shutdown(struct i2c_client *client)
 	fts_release_apk_debug_channel();
 #endif
 
+#ifdef CONFIG_TOUCHSCREEN_GESTURE_WAKEUP
+	if (gesture_wakeup_enabled == 1)
+		irq_set_irq_wake(touch_irq, false);
+#endif
 	free_irq(touch_irq, NULL);
 
 	gpio_free(tpd_rst_gpio_number);
@@ -985,6 +1036,10 @@ static int tpd_focal_remove(struct i2c_client *client)
 	fts_release_apk_debug_channel();
 #endif
 
+#ifdef CONFIG_TOUCHSCREEN_GESTURE_WAKEUP
+	if (gesture_wakeup_enabled == 1)
+		irq_set_irq_wake(touch_irq, false);
+#endif
 	free_irq(touch_irq, NULL);
 
 	gpio_free(tpd_rst_gpio_number);
@@ -1268,12 +1323,26 @@ static void tpd_resume(struct device *h)
 {
 	pr_debug("[focal] %s-%d TOUCH RESUME.\n", __func__, __LINE__);
 
+#ifdef CONFIG_TOUCHSCREEN_GESTURE_WAKEUP
+	mutex_lock(&fts_gesture_wakeup_mutex);
+#endif
+
 #ifdef FTS_POWER_DOWN_IN_SUSPEND
+#ifndef CONFIG_TOUCHSCREEN_GESTURE_WAKEUP
 	tpd_power_on();
+#else
+	if (gesture_wakeup_enabled == 1)
+		fts_reset_hw();
+	else
+		tpd_power_on();
+#endif
 #else
 	fts_reset_hw();
 #endif
+
+#ifndef CONFIG_TOUCHSCREEN_GESTURE_WAKEUP
 	enable_irq(touch_irq);
+#endif
 
 	msleep(30);
 	tpd_halt = 0;
@@ -1286,7 +1355,13 @@ static void tpd_resume(struct device *h)
 	queue_delayed_work(fts_charger_check_workqueue,
 			&fts_charger_check_work, TPD_CHARGER_CHECK_CIRCLE);
 #endif
+
 	focal_suspend_flag = false;
+
+#ifdef CONFIG_TOUCHSCREEN_GESTURE_WAKEUP
+	mutex_unlock(&fts_gesture_wakeup_mutex);
+#endif
+
 	pr_debug("[focal] %s-%d TOUCH RESUME DONE.\n", __func__, __LINE__);
 }
 
@@ -1313,6 +1388,7 @@ static void tpd_suspend(struct device *h)
 #ifdef FTS_CHARGER_DETECT
 	cancel_delayed_work_sync(&fts_charger_check_work);
 #endif
+
 	tpd_halt = 1;
 	if (unlikely(current_touchs)) {
 		for (i = 0; i < CFG_MAX_TOUCH_POINTS; i++) {
@@ -1327,18 +1403,38 @@ static void tpd_suspend(struct device *h)
 		input_report_key(tpd->dev, BTN_TOUCH, 0);
 		input_sync(tpd->dev);
 	}
+
+#ifndef CONFIG_TOUCHSCREEN_GESTURE_WAKEUP
 	disable_irq(touch_irq);
+#endif
+
+#ifdef CONFIG_TOUCHSCREEN_GESTURE_WAKEUP
+	mutex_lock(&fts_gesture_wakeup_mutex);
+#endif
 
 #ifdef FTS_POWER_DOWN_IN_SUSPEND
+#ifndef CONFIG_TOUCHSCREEN_GESTURE_WAKEUP
 	tpd_power_down();
 #else
-	mutex_lock(&i2c_access);
+	gesture_wakeup_enable();
+#endif
+#else
+#ifdef CONFIG_TOUCHSCREEN_GESTURE_WAKEUP
+	gesture_wakeup_enable();
+#else
 	/* write i2c command to make IC into deepsleep */
+	mutex_lock(&i2c_access);
 	fts_write_reg(i2c_client, 0xa5, 0x03);
 	mutex_unlock(&i2c_access);
 #endif
+#endif
 
 	focal_suspend_flag = true;
+
+#ifdef CONFIG_TOUCHSCREEN_GESTURE_WAKEUP
+	mutex_unlock(&fts_gesture_wakeup_mutex);
+#endif
+
 	pr_debug("[focal] %s-%d TOUCH SUSPEND DONE.\n", __func__, __LINE__);
 }
 

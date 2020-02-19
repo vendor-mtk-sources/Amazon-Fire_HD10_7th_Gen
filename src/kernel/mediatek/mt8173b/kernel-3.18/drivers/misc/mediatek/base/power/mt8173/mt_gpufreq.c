@@ -32,7 +32,12 @@
 #include <linux/fb.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
+#include <linux/of_platform.h>
+
 #include <linux/regulator/consumer.h>
+#include <linux/regulator/driver.h>
+#include <internal.h>
+
 
 #include <asm/uaccess.h>
 
@@ -186,6 +191,66 @@ static int  mt_gpufreq_ptpod_disable_idx;
 
 static void mt_gpu_clock_switch(unsigned int freq_new);
 static void mt_gpu_volt_switch(unsigned int volt_old, unsigned int volt_new);
+
+#define MT8173_DBG_IMG_PWR
+
+#ifdef MT8173_DBG_IMG_PWR
+static void __iomem *dbg_topckgen_base;	/* 0x10000000 */
+static void __iomem *dbg_apmixedsys_base;	/* 0x10209000 */
+static void __iomem *dbg_scpsys_base;	/* 0x10006000 */
+
+#define DBG_TOPCKGEN_REG(ofs)		(dbg_topckgen_base + ofs)
+#define DBG_SCP_REG(ofs)			(dbg_scpsys_base + ofs)
+#define DBG_APMIXED_REG(ofs)		(dbg_apmixedsys_base + ofs)
+
+#define DBG_SPM_PWR_STATUS		DBG_SCP_REG(0x60c)
+#define DBG_CLK_CFG_0			DBG_TOPCKGEN_REG(0x040)
+#define DBG_CLK_CFG_1			DBG_TOPCKGEN_REG(0x050)
+#define DBG_MMPLL_CON0			DBG_APMIXED_REG(0x240)
+
+static void __iomem *dbg_gpu_get_reg(struct device_node *np, int index)
+{
+	return of_iomap(np, index);
+}
+
+static int dbg_get_base_from_node(
+			const char *cmp, int idx, void __iomem **pbase)
+{
+	struct device_node *node;
+
+	node = of_find_compatible_node(NULL, NULL, cmp);
+
+	if (!node) {
+		pr_warn("node '%s' not found!\n", cmp);
+		return -1;
+	}
+
+	*pbase = dbg_gpu_get_reg(node, idx);
+	pr_info("%s base: 0x%p\n", cmp, *pbase);
+
+	return 0;
+}
+
+
+static void dbg_init_iomap(void)
+{
+	dbg_get_base_from_node("mediatek,mt8173-topckgen", 0, &dbg_topckgen_base);
+	dbg_get_base_from_node("mediatek,mt8173-apmixedsys", 0, &dbg_apmixedsys_base);
+	dbg_get_base_from_node("mediatek,mt8173-scpsys", 0, &dbg_scpsys_base);
+}
+
+static void dbg_dump_reg(void)
+{
+
+	mutex_lock(&mt_gpufreq_lock);
+	pr_warn("[PVR] dump gpu power DBG_SPM_PWR_STATUS[0x%x]\n", readl(DBG_SPM_PWR_STATUS));
+	pr_warn("[PVR] dump gpu power DBG_CLK_CFG_0[0x%x]\n", readl(DBG_CLK_CFG_0));
+	pr_warn("[PVR] dump gpu power DBG_CLK_CFG_1[0x%x]\n", readl(DBG_CLK_CFG_1));
+	pr_warn("[PVR] dump gpu power DBG_MMPLL_CON0[0x%x]\n", readl(DBG_MMPLL_CON0));
+	mutex_unlock(&mt_gpufreq_lock);
+}
+
+#endif
 
 
 /*************************************************************************************
@@ -419,6 +484,19 @@ unsigned int mt_gpufreq_voltage_enable_set(unsigned int enable)
 	return 0;
 }
 EXPORT_SYMBOL(mt_gpufreq_voltage_enable_set);
+
+void mt_gpufreq_pwr_dump(void)
+{
+
+#ifdef MT8173_DBG_IMG_PWR
+	dbg_dump_reg();
+	pr_info("[GPU_FREQ]: current vgpu is enabled [%d], count [%d].\n",
+		regulator_is_enabled(g_reg_vgpu),
+		g_reg_vgpu->rdev->use_count);
+#endif
+
+}
+
 
 /************************************************
 * DVFS enable API for PTPOD
@@ -2358,6 +2436,10 @@ static int __init mt_gpufreq_init(void)
 
 	if (ret)
 		pr_err("failed to register gpufreq driver\n");
+
+#ifdef MT8173_DBG_IMG_PWR
+	dbg_init_iomap();
+#endif
 
 	return ret;
 }

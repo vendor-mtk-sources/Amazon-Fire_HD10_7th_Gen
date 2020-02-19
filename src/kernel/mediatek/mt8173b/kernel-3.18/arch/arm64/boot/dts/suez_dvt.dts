@@ -454,7 +454,7 @@
 	mmc-hs400-1_8v;
 	cap-mmc-hw-reset;
 	hs400-ds-delay = <0x14015>;
-	hs200_cmd_int_delay = <26>;
+	hs200_cmd_int_delay = <30>;
 	hs400_cmd_int_delay = <14>;
 	cmd_resp_sel = <0>; /* 0: rising, 1: falling */
 	vmmc-supply = <&mt6397_vemc_3v3_reg>;

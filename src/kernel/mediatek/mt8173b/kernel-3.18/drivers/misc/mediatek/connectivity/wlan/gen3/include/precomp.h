@@ -209,6 +209,7 @@
 #endif
 
 extern BOOLEAN fgIsResetting;
+extern BOOLEAN fgResetTriggered;
 
 /*******************************************************************************
 *                              C O N S T A N T S

@@ -424,6 +424,22 @@ void kpd_pwrkey_pmic_handler(unsigned long pressed)
 #define KPD_PMIC_RSTKEY_MAP KEY_VOLUMEDOWN
 #endif
 
+#ifdef CONFIG_TOUCHSCREEN_GESTURE_WAKEUP
+void kpd_tpd_wakeup_handler(unsigned long pressed)
+{
+	kpd_print("Power Key generate, pressed=%ld\n", pressed);
+	if (!kpd_input_dev) {
+		kpd_print("KPD input device not ready\n");
+		return;
+	}
+	kpd_tpd_wakeup_hal(pressed);
+	if (pressed) /* keep the lock while the button in held pushed */
+		wake_lock(&pwrkey_lock);
+	else /* keep the lock for extra 500ms after the button is released */
+		wake_lock_timeout(&pwrkey_lock, HZ/2);
+}
+#endif
+
 void kpd_pmic_rstkey_handler(unsigned long pressed)
 {
 	kpd_print("PMIC reset Key generate, pressed=%ld\n", pressed);

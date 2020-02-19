@@ -31,10 +31,6 @@
 
 #include <mt-plat/aee.h>
 
-#if defined(CONFIG_AMAZON_METRICS_LOG)
-#include <linux/metricslog.h>
-#endif /* CONFIG_AMAZON_METRICS_LOG     */
-
 /**************************************
  * only for internal debug
  **************************************/
@@ -142,17 +138,6 @@ static void slp_dump_pm_regs(void)
 
 }
 #endif
-
-#ifdef CONFIG_AMAZON_METRICS_LOG
-static struct work_struct metrics_work_offmode;
-static char metrics_buf_offmode[50];
-
-static void wokeup_metrics_offmode(struct work_struct *work)
-{
-	/* Log suspend state failure or success */
-	log_to_metrics(ANDROID_LOG_INFO, "kernel", metrics_buf_offmode);
-}
-#endif /* CONFIG_AMAZON_METRICS_LOG     */
 
 static int slp_suspend_ops_valid(suspend_state_t state)
 {
@@ -300,21 +285,6 @@ static int slp_suspend_ops_enter(suspend_state_t state)
 #endif
 		slp_wake_reason = spm_go_to_sleep(slp_spm_flags, slp_spm_data);
 
-#if defined(CONFIG_AMAZON_METRICS_LOG)
-	switch (state) {
-	case PM_SUSPEND_STANDBY:
-	case PM_SUSPEND_MEM:
-		if ((slp_wake_reason != WR_UART_BUSY) && (slp_wake_reason != WR_PCM_ABORT))
-			snprintf(metrics_buf_offmode, sizeof(metrics_buf_offmode),
-				 "system_resume:off_mode:success=1;CT;1:NR");
-		else
-			snprintf(metrics_buf_offmode, sizeof(metrics_buf_offmode),
-				 "system_resume:off_mode:fail=1;CT;1:NR");
-		schedule_work(&metrics_work_offmode);
-		break;
-	}
-#endif				/* CONFIG_AMAZON_METRICS_LOG     */
-
  LEAVE_SLEEP:
 #ifdef CONFIG_MTKPASR
 	/* PASR SW operations */
@@ -433,9 +403,6 @@ static int __init slp_module_init(void)
 	console_suspend_enabled = 0;
 #endif
 
-#if defined(CONFIG_AMAZON_METRICS_LOG)
-	INIT_WORK(&metrics_work_offmode, wokeup_metrics_offmode);
-#endif /* CONFIG_AMAZON_METRICS_LOG     */
 	return 0;
 }
 

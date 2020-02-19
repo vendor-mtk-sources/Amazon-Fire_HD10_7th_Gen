@@ -816,6 +816,7 @@ irqreturn_t musb_g_ep0_irq(struct musb *musb)
 	u32 csr;
 	u16 len;
 	irqreturn_t retval = IRQ_NONE;
+	int i = 0;
 	void __iomem *mbase = musb->mac_base;
 	struct usb_request *request;
 	struct musb_request *req;
@@ -1049,7 +1050,13 @@ setup:
 
 					while (mu3d_readl(mbase, U3D_EP0CSR) & EP0_FIFOFULL) {
 						/* Wait until FIFOFULL cleared by hrdc */
-						cpu_relax();
+						mdelay(5);
+						i++;
+						if (i > 5) {
+							mu3d_dbg(K_ERR,
+								  "ep0 still full, something wrong!!!.0x%x\n",mu3d_readl(mbase, U3D_EP0CSR));
+							break;
+						}
 					}
 
 					musb->ackpend |= EP0_DATAEND;
