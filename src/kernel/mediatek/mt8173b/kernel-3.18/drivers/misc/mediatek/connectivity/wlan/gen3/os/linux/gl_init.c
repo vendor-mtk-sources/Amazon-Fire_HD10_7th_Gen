@@ -2385,6 +2385,11 @@ static void createWirelessDevice(void)
 		DBGLOG(INIT, ERROR, "Allocating memory to wireless_dev context failed\n");
 		return;
 	}
+
+	/* initialize semaphore for halt */
+	sema_init(&g_halt_sem, 1);
+	g_u4HaltFlag = 1;
+
 	/* 4 <1.2> Create wiphy */
 	prWiphy = wiphy_new(&mtk_wlan_ops, sizeof(GLUE_INFO_T));
 	if (!prWiphy) {
@@ -2596,9 +2601,6 @@ static struct wireless_dev *wlanNetCreate(PVOID pvData)
 	prGlueInfo->fgEnSdioTestPattern = FALSE;
 	prGlueInfo->fgIsSdioTestInitialized = FALSE;
 #endif
-
-	/* initialize semaphore for halt control */
-	sema_init(&g_halt_sem, 1);
 
 	/* 4 <8> Init Queues */
 	init_waitqueue_head(&prGlueInfo->waitq);
