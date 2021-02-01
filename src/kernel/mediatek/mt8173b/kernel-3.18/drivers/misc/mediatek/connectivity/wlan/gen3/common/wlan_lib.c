@@ -1665,7 +1665,9 @@ wlanAdapterStart(IN P_ADAPTER_T prAdapter,
 		prAdapter->fgEnCtiaPowerMode = FALSE;
 
 #endif
-
+#if CFG_SUPPORT_WAKEUP_REASON_DEBUG
+		prAdapter->ulSuspendFlag = 0;
+#endif
 		/* MGMT Initialization */
 		nicInitMGMT(prAdapter, prRegInfo);
 

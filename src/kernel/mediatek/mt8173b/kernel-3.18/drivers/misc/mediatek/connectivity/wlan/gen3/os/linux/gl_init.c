@@ -782,6 +782,7 @@
 #endif
 #include "gl_vendor.h"
 #include <linux/of.h>
+#include <linux/power_supply.h>
 /*******************************************************************************
 *                              C O N S T A N T S
 ********************************************************************************
@@ -978,6 +979,8 @@ static const UINT_32 mtk_cipher_suites[] = {
 };
 
 static struct cfg80211_ops mtk_wlan_ops = {
+	.suspend = mtk_cfg80211_suspend,
+	.resume = mtk_cfg80211_resume,
 	.change_virtual_intf = mtk_cfg80211_change_iface,
 	.add_key = mtk_cfg80211_add_key,
 	.get_key = mtk_cfg80211_get_key,
@@ -3242,7 +3245,7 @@ bailout:
 			break;
 		}
 #endif
-
+		kalTrafficStatInit(prGlueInfo);
 		prGlueInfo->main_thread = kthread_run(tx_thread, prGlueInfo->prDevHandler, "tx_thread");
 #if CFG_SUPPORT_MULTITHREAD
 		prGlueInfo->hif_thread = kthread_run(hif_thread, prGlueInfo->prDevHandler, "hif_thread");
@@ -3464,6 +3467,7 @@ static VOID wlanRemove(VOID)
 	prGlueInfo->u4TxThreadPid = 0xffffffff;
 	prGlueInfo->u4HifThreadPid = 0xffffffff;
 #endif
+	kalTrafficStatUnInit(prGlueInfo);
 
 	/* Destroy wakelock */
 	wlanWakeLockUninit(prGlueInfo);
@@ -3510,6 +3514,7 @@ static VOID wlanRemove(VOID)
 
 	up(&g_halt_sem);
 
+	flush_work(&prGlueInfo->rDrvWork.rWork);
 	/* 4 <6> Unregister the card */
 	wlanNetUnregister(prDev->ieee80211_ptr);
 
@@ -3527,6 +3532,56 @@ static VOID wlanRemove(VOID)
 	wlanUnregisterNotifier();
 
 }				/* end of wlanRemove() */
+
+static VOID wlanPsyWorkFunc(PUINT_8 pucParams)
+{
+	UINT_32 u4InfoBufLen;
+	P_GLUE_INFO_T prGlueInfo = *(P_GLUE_INFO_T *)pucParams;
+	PUINT_8 pucCharingStatus = &pucParams[sizeof(prGlueInfo)];
+
+	kalIoctl(prGlueInfo, wlanoidNotifyChargeStatus, pucCharingStatus, kalStrLen(pucCharingStatus),
+		 FALSE, FALSE, FALSE, &u4InfoBufLen);
+}
+
+static int wlan_psy_notification(struct notifier_block *nb, unsigned long event, void *data)
+{
+	struct power_supply *psy = (struct power_supply*)data;
+	union power_supply_propval status;
+	static int last_status = POWER_SUPPLY_STATUS_UNKNOWN;
+	static struct power_supply *batt_psy;
+
+	if (!batt_psy)
+		batt_psy = power_supply_get_by_name("battery");
+
+	if (event != PSY_EVENT_PROP_CHANGED || !psy || psy != batt_psy)
+		return NOTIFY_OK;
+
+	if (!psy->get_property(psy, POWER_SUPPLY_PROP_STATUS, &status) &&
+		status.intval != last_status) {
+		P_GLUE_INFO_T prGlueInfo = NULL;
+
+		if ((prGlueInfo = wlanGetGlueInfo()) && (last_status == POWER_SUPPLY_STATUS_CHARGING ||
+		    status.intval == POWER_SUPPLY_STATUS_CHARGING)) {
+			static UINT_8 aucPsyWorkBuf[sizeof(struct DRV_COMMON_WORK_FUNC_T) + sizeof(prGlueInfo) + 18];
+			struct DRV_COMMON_WORK_FUNC_T *prPsyWork = (struct DRV_COMMON_WORK_FUNC_T *)&aucPsyWorkBuf[0];
+			P_GLUE_INFO_T *pprGlueInfo = (P_GLUE_INFO_T *)prPsyWork->params;
+
+			*pprGlueInfo = prGlueInfo;
+			if (last_status == POWER_SUPPLY_STATUS_CHARGING)
+				kalStrCpy(&prPsyWork->params[sizeof(prGlueInfo)], "Charging finished");
+			else
+				kalStrCpy(&prPsyWork->params[sizeof(prGlueInfo)], "Charging started");
+			prPsyWork->work_func = wlanPsyWorkFunc;
+			kalScheduleCommonWork(&prGlueInfo->rDrvWork, prPsyWork);
+		}
+	}
+	DBGLOG(INIT, TEMP, "charge status, current %d, last %d\n", status.intval, last_status);
+	last_status = status.intval;
+	return NOTIFY_OK;
+}
+static struct notifier_block wlan_psy_nb = {
+	.notifier_call = wlan_psy_notification,
+};
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -3566,6 +3621,7 @@ static int initWlan(void)
 	glResetInit();
 #endif
 	glRegisterPlatformDev();
+	power_supply_reg_notifier(&wlan_psy_nb);
 	return ret;
 }				/* end of initWlan() */
 
@@ -3593,6 +3649,7 @@ static VOID exitWlan(void)
 	destroyWirelessDevice();
 	glP2pDestroyWirelessDevice();
 	procUninitProcFs();
+	power_supply_unreg_notifier(&wlan_psy_nb);
 
 	DBGLOG(INIT, INFO, "exitWlan\n");
 
